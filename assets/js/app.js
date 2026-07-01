@@ -1,8 +1,8 @@
 // ===== SUPABASE CONFIG =====
 // Configure via Settings page. When set, data is synced to Supabase Postgres
 // so it persists across devices/sessions instead of being per-browser only.
-const DEFAULT_SUPABASE_URL = 'https://blhjaitkrasnljwsaqda.supabase.co';
-const DEFAULT_SUPABASE_KEY = 'sb_publishable_XQKfkmF0KS2f4WPnQTffMw_M_3zb2-s';
+const DEFAULT_SUPABASE_URL = 'https://tzlotwovutgfjvrsrwhw.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'sb_publishable_BsugVO3X3NxZHxzcMb-yFg_Kjrw8oHz';
 const SUPABASE_URL = localStorage.getItem('smm_supabase_url') || DEFAULT_SUPABASE_URL;
 const SUPABASE_KEY = localStorage.getItem('smm_supabase_key') || DEFAULT_SUPABASE_KEY;
 
