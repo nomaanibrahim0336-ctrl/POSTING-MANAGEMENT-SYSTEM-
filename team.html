@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SMM-MANAGER — Team</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/style.css"/>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans">
+  <div id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-gray-900 border-r border-gray-800 flex flex-col z-50"></div>
+
+  <div class="ml-64 min-h-screen flex flex-col">
+    <header class="sticky top-0 z-40 bg-gray-950/80 backdrop-blur border-b border-gray-800 px-8 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">Team</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Workload overview across all team members</p>
+      </div>
+    </header>
+
+    <main class="flex-1 px-8 py-6 space-y-6" id="teamMain"></main>
+  </div>
+
+  <script src="assets/js/app.js"></script>
+  <script>
+    const ROLE_CONFIG = {
+      admin:           { label:'Admin',           color:'bg-indigo-500/20 text-indigo-400 border-indigo-500/30', icon:'fa-shield-halved', avatarBg:'bg-indigo-700' },
+      creator:         { label:'Executive',    color:'bg-blue-500/20 text-blue-400 border-blue-500/30',       icon:'fa-pen-nib',       avatarBg:'bg-blue-700' },
+      designer:        { label:'Designer',     color:'bg-pink-500/20 text-pink-400 border-pink-500/30',       icon:'fa-palette',       avatarBg:'bg-pink-700' },
+      project_manager: { label:'Team Lead',    color:'bg-green-500/20 text-green-400 border-green-500/30',    icon:'fa-user-tie',      avatarBg:'bg-green-700' },
+    };
+
+    function renderTeam() {
+      const team = APP.team;
+      const tasks = APP.tasks;
+      const main = document.getElementById('teamMain');
+
+      // summary cards
+      main.innerHTML = `
+        <div class="grid grid-cols-4 gap-4">
+          ${team.map(u => {
+            const cfg = ROLE_CONFIG[u.role] || ROLE_CONFIG.creator;
+            const myTasks = tasks.filter(t => t.assignedTo === u.name || t.designer === u.name);
+            const active = myTasks.filter(t => t.status !== 'posted').length;
+            const done = myTasks.filter(t => t.status === 'posted').length;
+            return `
+              <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                <div class="flex items-center gap-3 mb-4">
+                  <div class="avatar ${cfg.avatarBg} text-base">${u.avatar}</div>
+                  <div>
+                    <p class="text-sm font-semibold text-white">${u.name}</p>
+                    <span class="status-badge ${cfg.color} mt-0.5 inline-block">${cfg.label}</span>
+                  </div>
+                </div>
+                <div class="space-y-2">
+                  <div class="flex justify-between"><span class="text-xs text-gray-500">Active Tasks</span><span class="text-sm font-bold text-white">${active}</span></div>
+                  <div class="flex justify-between"><span class="text-xs text-gray-500">Completed</span><span class="text-sm font-bold text-green-400">${done}</span></div>
+                  <div class="flex justify-between"><span class="text-xs text-gray-500">Email</span><span class="text-xs text-gray-400 truncate ml-2">${u.email}</span></div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+
+        ${team.map(u => {
+          const cfg = ROLE_CONFIG[u.role] || ROLE_CONFIG.creator;
+          let myTasks = [];
+          if (u.role === 'designer') myTasks = tasks.filter(t => t.designer === u.name);
+          else myTasks = tasks.filter(t => t.assignedTo === u.name || t.createdBy === u.name);
+          const active = myTasks.filter(t => t.status !== 'posted');
+          if (!active.length) return '';
+          return `
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              <div class="flex items-center gap-3 mb-5">
+                <div class="avatar ${cfg.avatarBg}">${u.avatar}</div>
+                <div>
+                  <p class="text-base font-semibold text-white">${u.name}</p>
+                  <p class="text-xs text-gray-500">${cfg.label} · ${active.length} active tasks</p>
+                </div>
+              </div>
+              <div class="overflow-hidden rounded-xl border border-gray-800">
+                <table class="data-table">
+                  <thead><tr><th>Client</th><th>Type</th><th>Topic</th><th>Status</th><th>Due</th></tr></thead>
+                  <tbody>
+                    ${active.map(t => {
+                      const due = daysUntil(t.dueDate);
+                      const dueClass = due < 0 ? 'text-red-400 font-semibold' : due === 0 ? 'text-orange-400 font-semibold' : due <= 2 ? 'text-yellow-400' : 'text-gray-400';
+                      return `
+                        <tr>
+                          <td class="font-medium text-white">${t.clientName}</td>
+                          <td class="capitalize">${t.contentType}</td>
+                          <td class="max-w-xs truncate">${t.topic}</td>
+                          <td>${statusBadge(t.status)}</td>
+                          <td><span class="${dueClass}">${formatDate(t.dueDate)}</span></td>
+                        </tr>`;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>`;
+        }).join('')}
+      `;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const user = pageInit();
+      if (!user) return;
+      renderTeam();
+    });
+  </script>
+</body>
+</html>

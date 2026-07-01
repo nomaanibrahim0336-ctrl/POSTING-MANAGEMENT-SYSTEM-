@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SMM-MANAGER — Admin Panel</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/style.css"/>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans">
+  <div id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-gray-900 border-r border-gray-800 flex flex-col z-50"></div>
+
+  <div class="ml-64 min-h-screen flex flex-col">
+    <header class="sticky top-0 z-40 bg-gray-950/80 backdrop-blur border-b border-gray-800 px-8 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">Admin Panel</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Manage team members, roles & access</p>
+      </div>
+      <button onclick="openAddMember()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+        <i class="fa-solid fa-user-plus text-xs"></i> Add Member
+      </button>
+    </header>
+
+    <main class="flex-1 px-8 py-6 space-y-6">
+
+      <!-- Role Summary -->
+      <div class="grid grid-cols-4 gap-4" id="roleSummary"></div>
+
+      <!-- Team Members Table -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-white">Team Members</h2>
+          <span class="text-xs text-gray-500" id="memberCount"></span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Member</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Active Tasks</th>
+              <th>Password</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="teamTableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Permissions Reference -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <h2 class="text-sm font-semibold text-white mb-4">Role Permissions Reference</h2>
+        <div class="grid grid-cols-4 gap-4" id="permsReference"></div>
+      </div>
+
+      <!-- Role Permission Granting -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="flex items-center justify-between mb-1">
+          <div>
+            <h2 class="text-sm font-semibold text-white">Grant Permissions</h2>
+            <p class="text-xs text-gray-500 mt-0.5">Choose exactly what each role is allowed to do. Admin always has full access.</p>
+          </div>
+          <button onclick="savePermissions()" class="btn-primary px-4">
+            <i class="fa-solid fa-floppy-disk mr-1.5"></i>Save Permissions
+          </button>
+        </div>
+        <div class="overflow-x-auto mt-4">
+          <table class="data-table" id="permsGridTable">
+            <thead>
+              <tr>
+                <th>Action</th>
+                <th class="text-center">Team Lead</th>
+                <th class="text-center">Executive</th>
+                <th class="text-center">Designer</th>
+                <th class="text-center">Client Mgmt</th>
+              </tr>
+            </thead>
+            <tbody id="permsGridBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <!-- PIPELINE STAGES -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-violet-500/15 flex items-center justify-center">
+              <i class="fa-solid fa-kanban text-violet-400 text-sm"></i>
+            </div>
+            <div>
+              <h2 class="text-base font-semibold text-white">Pipeline Stages</h2>
+              <p class="text-xs text-gray-500">Define and manage the workflow stages shown on the Kanban board</p>
+            </div>
+          </div>
+          <button onclick="openAddStageModal()" class="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            <i class="fa-solid fa-plus text-xs"></i> Add Stage
+          </button>
+        </div>
+        <div id="adminPipelineList" class="space-y-2"></div>
+        <div class="mt-4 flex justify-end">
+          <button onclick="savePipelineStages()" class="btn-primary px-6">
+            <i class="fa-solid fa-floppy-disk mr-2"></i>Save Order & Changes
+          </button>
+        </div>
+      </div>
+
+      <!-- ADD / EDIT STAGE MODAL -->
+      <div id="stageModal" class="modal-overlay" onclick="if(event.target===this)closeStageModal()">
+        <div class="modal-box" style="max-width:460px">
+          <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+            <h2 class="text-base font-semibold text-white" id="stageModalTitle">Add Stage</h2>
+            <button onclick="closeStageModal()" class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-xmark text-lg"></i></button>
+          </div>
+          <div class="p-6 space-y-4">
+            <input type="hidden" id="stageEditIndex"/>
+            <div>
+              <label class="form-label">Stage Name *</label>
+              <input id="stageLabel" type="text" class="form-input" placeholder="e.g. Client Feedback"/>
+            </div>
+            <div>
+              <label class="form-label">Description</label>
+              <input id="stageDesc" type="text" class="form-input" placeholder="e.g. Waiting for client approval"/>
+            </div>
+            <div>
+              <label class="form-label">Color</label>
+              <div class="grid grid-cols-8 gap-2 mt-1" id="stageColorPicker"></div>
+              <input type="hidden" id="stageColor" value="bg-blue-500"/>
+            </div>
+          </div>
+          <div class="flex justify-end gap-3 px-6 py-4 border-t border-gray-800">
+            <button onclick="closeStageModal()" class="btn-secondary">Cancel</button>
+            <button onclick="saveStage()" class="btn-primary">Save Stage</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BRANDING -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div class="flex items-center gap-3 mb-5">
+          <div class="w-9 h-9 rounded-xl bg-orange-500/15 flex items-center justify-center">
+            <i class="fa-solid fa-palette text-orange-400 text-sm"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-semibold text-white">Branding</h2>
+            <p class="text-xs text-gray-500">Customize the logo and name shown on the login page and sidebar</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-6">
+          <!-- Left: inputs -->
+          <div class="space-y-4">
+            <div>
+              <label class="form-label">Dashboard Name (Line 1)</label>
+              <input id="brandName1" type="text" class="form-input" placeholder="e.g. SOCIAL MEDIA"/>
+            </div>
+            <div>
+              <label class="form-label">Dashboard Name (Line 2)</label>
+              <input id="brandName2" type="text" class="form-input" placeholder="e.g. MANAGEMENT"/>
+            </div>
+            <div>
+              <label class="form-label">Upload Logo</label>
+              <label class="flex items-center gap-3 cursor-pointer border border-gray-700 border-dashed rounded-xl px-4 py-4 hover:border-orange-500/50 hover:bg-orange-500/5 transition-colors">
+                <i class="fa-solid fa-cloud-arrow-up text-orange-400 text-lg"></i>
+                <div>
+                  <p class="text-sm text-white font-medium">Click to upload image</p>
+                  <p class="text-xs text-gray-500 mt-0.5">PNG, JPG, SVG — recommended 64×64px or square</p>
+                </div>
+                <input type="file" id="brandLogoInput" accept="image/*" class="hidden" onchange="previewBrandLogo(event)"/>
+              </label>
+            </div>
+            <button onclick="saveBrandingSettings()" class="btn-primary w-full">
+              <i class="fa-solid fa-floppy-disk mr-2"></i>Save Branding
+            </button>
+          </div>
+          <!-- Right: live preview -->
+          <div class="space-y-3">
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold">Live Preview</p>
+            <!-- Sidebar preview -->
+            <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+              <p class="text-xs text-gray-500 mb-3">Sidebar</p>
+              <div class="flex items-center gap-3">
+                <div id="previewLogoSidebar" class="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center bg-orange-500/10 flex-shrink-0">
+                  <svg width="32" height="32" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="30" y="5" width="28" height="58" rx="4" ry="4" fill="#F97316"/>
+                    <path d="M58,5 Q85,5 85,30 L85,63 L58,63 Z" fill="#F97316"/>
+                    <text x="8" y="96" font-family="Arial Black,sans-serif" font-weight="900" font-size="30" fill="#F97316">TECH</text>
+                  </svg>
+                </div>
+                <div class="leading-tight">
+                  <span id="previewName1Sidebar" class="text-white font-bold text-sm tracking-wide block">SOCIAL MEDIA</span>
+                  <span id="previewName2Sidebar" class="text-orange-400 font-semibold text-xs tracking-widest block">MANAGEMENT</span>
+                </div>
+              </div>
+            </div>
+            <!-- Login preview -->
+            <div class="bg-gray-800 rounded-xl p-4 border border-gray-700 text-center">
+              <p class="text-xs text-gray-500 mb-3">Login Page</p>
+              <div id="previewLogoLogin" class="w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center bg-orange-500/10 mx-auto mb-2">
+                <svg width="48" height="48" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="30" y="5" width="28" height="58" rx="4" ry="4" fill="#F97316"/>
+                  <path d="M58,5 Q85,5 85,30 L85,63 L58,63 Z" fill="#F97316"/>
+                  <text x="8" y="96" font-family="Arial Black,sans-serif" font-weight="900" font-size="30" fill="#F97316">TECH</text>
+                </svg>
+              </div>
+              <p id="previewName1Login" class="text-white font-bold text-lg tracking-wide">SOCIAL MEDIA</p>
+              <p id="previewName2Login" class="text-orange-400 font-semibold text-xs tracking-widest mt-0.5">MANAGEMENT</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- API / BACKEND SETTINGS -->
+      <div class="mt-8 bg-gray-900 border border-gray-800 rounded-2xl p-6">
+        <div class="flex items-center gap-3 mb-5">
+          <div class="w-9 h-9 rounded-xl bg-indigo-500/15 flex items-center justify-center">
+            <i class="fa-solid fa-plug text-indigo-400 text-sm"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-semibold text-white">Backend Connection</h2>
+            <p class="text-xs text-gray-500">Connect to Supabase for real shared data across devices</p>
+          </div>
+          <span id="apiStatusBadge" class="ml-auto text-xs px-2.5 py-1 rounded-full font-medium bg-gray-800 text-gray-400">Not connected</span>
+        </div>
+
+        <div class="space-y-4">
+          <div>
+            <label class="form-label">Supabase Project URL</label>
+            <input id="apiUrlInput" type="url" class="form-input" placeholder="https://xxxxx.supabase.co"/>
+          </div>
+          <div>
+            <label class="form-label">Supabase Anon/Publishable Key</label>
+            <div class="flex gap-2">
+              <input id="apiKeyInput" type="text" class="form-input flex-1" placeholder="eyJhbGciOi..."/>
+              <button onclick="testAPIConnection()" class="btn-secondary px-4 whitespace-nowrap">
+                <i class="fa-solid fa-satellite-dish mr-1.5"></i>Test
+              </button>
+            </div>
+            <p class="text-xs text-gray-600 mt-1.5">Found in your Supabase project under Settings → API</p>
+          </div>
+
+          <div id="apiTestResult" class="hidden rounded-lg px-4 py-3 text-sm"></div>
+
+          <div class="flex gap-3">
+            <button onclick="saveAPIUrl()" class="btn-primary px-5">
+              <i class="fa-solid fa-link mr-1.5"></i>Save & Connect
+            </button>
+            <button onclick="disconnectAPI()" class="btn-secondary px-5">
+              <i class="fa-solid fa-link-slash mr-1.5"></i>Disconnect
+            </button>
+          </div>
+
+          <div class="border-t border-gray-800 pt-4">
+            <p class="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wider">After connecting</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div class="bg-gray-800/50 rounded-lg p-3 text-xs text-gray-400">
+                <i class="fa-solid fa-users text-indigo-400 mr-1.5"></i>All team members share the same live data
+              </div>
+              <div class="bg-gray-800/50 rounded-lg p-3 text-xs text-gray-400">
+                <i class="fa-solid fa-shield text-green-400 mr-1.5"></i>Login uses real JWT authentication
+              </div>
+              <div class="bg-gray-800/50 rounded-lg p-3 text-xs text-gray-400">
+                <i class="fa-solid fa-rotate text-blue-400 mr-1.5"></i>Data syncs from server on every page load
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ADD / EDIT MEMBER MODAL -->
+  <div id="memberModal" class="modal-overlay" onclick="if(event.target===this)closeMemberModal()">
+    <div class="modal-box">
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+        <h2 class="text-base font-semibold text-white" id="memberModalTitle">Add Team Member</h2>
+        <button onclick="closeMemberModal()" class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <input type="hidden" id="memberId"/>
+        <div id="memberModalError" class="hidden bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-lg">
+          <i class="fa-solid fa-circle-exclamation mr-2"></i><span id="memberModalErrorText">Something went wrong.</span>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Full Name *</label>
+            <input id="memberName" type="text" class="form-input" placeholder="e.g. Javeria"/>
+          </div>
+          <div>
+            <label class="form-label">Email *</label>
+            <input id="memberEmail" type="email" class="form-input" placeholder="email@smm.com"/>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Roles * <span class="text-gray-600 font-normal">(select all that apply)</span></label>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2 cursor-pointer hover:border-gray-600">
+              <input type="checkbox" class="member-role-check" value="admin"> <span class="text-sm text-gray-200">Admin</span>
+            </label>
+            <label class="flex items-center gap-2 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2 cursor-pointer hover:border-gray-600">
+              <input type="checkbox" class="member-role-check" value="project_manager"> <span class="text-sm text-gray-200">Team Lead</span>
+            </label>
+            <label class="flex items-center gap-2 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2 cursor-pointer hover:border-gray-600">
+              <input type="checkbox" class="member-role-check" value="creator"> <span class="text-sm text-gray-200">Executive</span>
+            </label>
+            <label class="flex items-center gap-2 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2 cursor-pointer hover:border-gray-600">
+              <input type="checkbox" class="member-role-check" value="designer"> <span class="text-sm text-gray-200">Designer</span>
+            </label>
+            <label class="flex items-center gap-2 bg-gray-800/60 border border-gray-700 rounded-lg px-3 py-2 cursor-pointer hover:border-gray-600 col-span-2">
+              <input type="checkbox" class="member-role-check" value="client_manager"> <span class="text-sm text-gray-200">Client Management</span>
+            </label>
+          </div>
+          <p class="text-xs text-gray-600 mt-1">First selected role is used as the primary role.</p>
+        </div>
+        <div>
+          <label class="form-label" id="passwordLabel">Password *</label>
+          <div class="relative">
+            <input id="memberPassword" type="password" class="form-input pr-10" placeholder="Set password"/>
+            <button type="button" onclick="toggleMemberPw()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              <i id="memberEyeIcon" class="fa-solid fa-eye text-sm"></i>
+            </button>
+          </div>
+          <p class="text-xs text-gray-600 mt-1" id="passwordHint">Leave blank to keep existing password when editing</p>
+        </div>
+        <div id="confirmPwWrap">
+          <label class="form-label">Confirm Password</label>
+          <input id="memberPasswordConfirm" type="password" class="form-input" placeholder="Repeat password"/>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-gray-800">
+        <button onclick="closeMemberModal()" class="btn-secondary">Cancel</button>
+        <button onclick="saveMember()" class="btn-primary" id="saveMemberBtn">Add Member</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHANGE PASSWORD MODAL -->
+  <div id="pwModal" class="modal-overlay" onclick="if(event.target===this)closePwModal()">
+    <div class="modal-box" style="max-width:420px">
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+        <h2 class="text-base font-semibold text-white">Change Password</h2>
+        <button onclick="closePwModal()" class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <input type="hidden" id="pwUserId"/>
+        <p class="text-sm text-gray-400">Changing password for: <span id="pwUserName" class="text-white font-semibold"></span></p>
+        <div>
+          <label class="form-label">New Password *</label>
+          <div class="relative">
+            <input id="newPw" type="password" class="form-input pr-10" placeholder="New password"/>
+            <button type="button" onclick="togglePw('newPw','pwEye1')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              <i id="pwEye1" class="fa-solid fa-eye text-sm"></i>
+            </button>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Confirm Password *</label>
+          <div class="relative">
+            <input id="confirmPw" type="password" class="form-input pr-10" placeholder="Confirm password"/>
+            <button type="button" onclick="togglePw('confirmPw','pwEye2')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+              <i id="pwEye2" class="fa-solid fa-eye text-sm"></i>
+            </button>
+          </div>
+        </div>
+        <div id="pwError" class="hidden text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+          Passwords do not match
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-gray-800">
+        <button onclick="closePwModal()" class="btn-secondary">Cancel</button>
+        <button onclick="savePassword()" class="btn-primary">Update Password</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/app.js"></script>
+  <script>
+    const ROLE_CONFIG = {
+      admin:           { label:'Admin',           color:'bg-indigo-500/15 text-indigo-400 border-indigo-500/30',  avatarBg:'bg-indigo-700',  icon:'fa-shield-halved' },
+      creator:         { label:'Executive',        color:'bg-blue-500/15 text-blue-400 border-blue-500/30',        avatarBg:'bg-blue-700',    icon:'fa-pen-nib' },
+      designer:        { label:'Designer',        color:'bg-pink-500/15 text-pink-400 border-pink-500/30',        avatarBg:'bg-pink-700',    icon:'fa-palette' },
+      project_manager: { label:'Team Lead', color:'bg-green-500/15 text-green-400 border-green-500/30',     avatarBg:'bg-green-700',   icon:'fa-user-tie' },
+      client_manager:  { label:'Client Management', color:'bg-yellow-500/15 text-yellow-400 border-yellow-500/30', avatarBg:'bg-yellow-700', icon:'fa-briefcase' },
+    };
+
+    function renderPermsReference() {
+      const perms = [
+        { role:'Admin', color:'text-indigo-400', bg:'bg-indigo-500/10 border-indigo-500/20', list:['Full system access','Manage team members','Reset all passwords','View all data','Change any task/status','System settings'] },
+        { role:'Team Lead', color:'text-green-400', bg:'bg-green-500/10 border-green-500/20', list:['Create tasks','Approve / reject tasks','Request changes','View all clients & tasks','Cannot manage team'] },
+        { role:'Executive', color:'text-blue-400', bg:'bg-blue-500/10 border-blue-500/20', list:['View assigned tasks','Move tasks to designer','Add comments & notes','Cannot manage clients','Cannot approve tasks'] },
+        { role:'Designer', color:'text-pink-400', bg:'bg-pink-500/10 border-pink-500/20', list:['View design queue','Mark tasks complete','Request changes','Add comments','Cannot create tasks'] },
+        { role:'Client Management', color:'text-yellow-400', bg:'bg-yellow-500/10 border-yellow-500/20', list:['Manage client records','Run intake & export to Sheets','Set client phase & pipeline stage','Cannot manage team'] },
+      ];
+      document.getElementById('permsReference').innerHTML = perms.map(r => `
+        <div class="border ${r.bg} rounded-xl p-4">
+          <p class="text-sm font-semibold ${r.color} mb-3">${r.role}</p>
+          <ul class="space-y-1.5">
+            ${r.list.map(p => `<li class="flex items-start gap-2 text-xs text-gray-400"><i class="fa-solid fa-check text-green-500 mt-0.5 flex-shrink-0"></i>${p}</li>`).join('')}
+          </ul>
+        </div>`).join('');
+    }
+
+    // ===== ROLE PERMISSION GRANTING =====
+    function renderPermissionsGrid() {
+      const perms = getRolePermissions();
+      const groups = {};
+      PERMISSION_ACTIONS.forEach(a => { (groups[a.group] = groups[a.group] || []).push(a); });
+
+      let html = '';
+      Object.keys(groups).forEach(group => {
+        html += `<tr><td colspan="5" class="bg-gray-800/50 text-xs font-semibold text-gray-400 uppercase tracking-wider">${group}</td></tr>`;
+        groups[group].forEach(a => {
+          html += `<tr>
+            <td class="text-gray-200">${a.label}</td>
+            ${GRANTABLE_ROLES.map(role => `
+              <td class="text-center">
+                <input type="checkbox" class="perm-check w-4 h-4 accent-indigo-500 cursor-pointer"
+                  data-action="${a.key}" data-role="${role}"
+                  ${(perms[a.key] || []).includes(role) ? 'checked' : ''}/>
+              </td>`).join('')}
+          </tr>`;
+        });
+      });
+      document.getElementById('permsGridBody').innerHTML = html;
+    }
+
+    async function savePermissions() {
+      const btn = document.querySelector('button[onclick="savePermissions()"]');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Saving…'; }
+      const perms = {};
+      PERMISSION_ACTIONS.forEach(a => { perms[a.key] = []; });
+      document.querySelectorAll('.perm-check').forEach(cb => {
+        if (cb.checked) perms[cb.dataset.action].push(cb.dataset.role);
+      });
+      saveRolePermissions(perms);
+      await apiSavePermissions(perms);
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk mr-1.5"></i>Save Permissions'; }
+      showToast('Permissions saved & synced to all users!');
+    }
+
+    function renderAdmin() {
+      const team = APP.team;
+      // Role summary
+      const roles = ['admin','project_manager','creator','designer'];
+      document.getElementById('roleSummary').innerHTML = roles.map(r => {
+        const cfg = ROLE_CONFIG[r];
+        const count = team.filter(u => u.role === r).length;
+        return `
+          <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 flex items-center gap-4">
+            <div class="w-10 h-10 rounded-xl ${cfg.avatarBg.replace('700','600')}/20 flex items-center justify-center">
+              <i class="fa-solid ${cfg.icon} ${cfg.color.split(' ')[1]} text-sm"></i>
+            </div>
+            <div>
+              <p class="text-2xl font-bold text-white">${count}</p>
+              <p class="text-xs text-gray-500">${cfg.label}${count !== 1 ? 's' : ''}</p>
+            </div>
+          </div>`;
+      }).join('');
+
+      document.getElementById('memberCount').textContent = `${team.length} members`;
+
+      // Table
+      document.getElementById('teamTableBody').innerHTML = team.map(u => {
+        const cfg = ROLE_CONFIG[u.role] || ROLE_CONFIG.creator;
+        const activeTasks = APP.tasks.filter(t => (t.assignedTo === u.name || t.designer === u.name) && t.status !== 'posted').length;
+        return `
+          <tr>
+            <td>
+              <div class="flex items-center gap-3">
+                <div class="avatar ${cfg.avatarBg} text-sm">${u.avatar || u.name[0]}</div>
+                <span class="font-medium text-white">${u.name}</span>
+              </div>
+            </td>
+            <td class="text-gray-400">${u.email}</td>
+            <td>
+              <div class="flex flex-wrap gap-1">
+                ${(u.roles && u.roles.length ? u.roles : [u.role]).map(r => {
+                  const rc = ROLE_CONFIG[r] || ROLE_CONFIG.creator;
+                  return `<span class="status-badge ${rc.color}">${rc.label}</span>`;
+                }).join('')}
+              </div>
+            </td>
+            <td><span class="font-semibold ${activeTasks > 5 ? 'text-orange-400' : 'text-white'}">${activeTasks}</span></td>
+            <td>
+              <button onclick="openPwModal('${u.id}')" class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-indigo-400 transition-colors bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg">
+                <i class="fa-solid fa-key text-xs"></i> Change
+              </button>
+            </td>
+            <td>
+              <div class="flex gap-2">
+                <button onclick="editMember('${u.id}')" class="text-gray-500 hover:text-indigo-400 transition-colors p-1.5 hover:bg-gray-800 rounded-lg">
+                  <i class="fa-solid fa-pen text-xs"></i>
+                </button>
+                ${u.role !== 'admin' ? `<button onclick="deleteMember('${u.id}')" class="text-gray-500 hover:text-red-400 transition-colors p-1.5 hover:bg-gray-800 rounded-lg"><i class="fa-solid fa-trash text-xs"></i></button>` : ''}
+              </div>
+            </td>
+          </tr>`;
+      }).join('');
+    }
+
+
+    // Add / Edit Member
+    function openAddMember() {
+      document.getElementById('memberId').value = '';
+      document.getElementById('memberModalTitle').textContent = 'Add Team Member';
+      document.getElementById('saveMemberBtn').textContent = 'Add Member';
+      document.getElementById('memberName').value = '';
+      document.getElementById('memberEmail').value = '';
+      document.querySelectorAll('.member-role-check').forEach(cb => cb.checked = (cb.value === 'creator'));
+      document.getElementById('memberPassword').value = '';
+      document.getElementById('memberPasswordConfirm').value = '';
+      document.getElementById('passwordHint').classList.add('hidden');
+      document.getElementById('memberModalError').classList.add('hidden');
+      document.getElementById('memberModal').classList.add('open');
+    }
+
+    function editMember(id) {
+      const u = APP.team.find(u => u.id === id);
+      if (!u) return;
+      document.getElementById('memberId').value = u.id;
+      document.getElementById('memberModalTitle').textContent = 'Edit Member';
+      document.getElementById('saveMemberBtn').textContent = 'Save Changes';
+      document.getElementById('memberName').value = u.name;
+      document.getElementById('memberEmail').value = u.email;
+      const memberRoles = (u.roles && u.roles.length) ? u.roles : [u.role];
+      document.querySelectorAll('.member-role-check').forEach(cb => cb.checked = memberRoles.includes(cb.value));
+      document.getElementById('memberPassword').value = '';
+      document.getElementById('memberPasswordConfirm').value = '';
+      document.getElementById('passwordHint').classList.remove('hidden');
+      document.getElementById('memberModal').classList.add('open');
+    }
+
+    function closeMemberModal() { document.getElementById('memberModal').classList.remove('open'); }
+
+    async function saveMember() {
+      const id   = document.getElementById('memberId').value;
+      const name = document.getElementById('memberName').value.trim();
+      const email = document.getElementById('memberEmail').value.trim();
+      const roles = [...document.querySelectorAll('.member-role-check:checked')].map(cb => cb.value);
+      const role  = roles[0] || 'creator';
+      const pw   = document.getElementById('memberPassword').value;
+      const cpw  = document.getElementById('memberPasswordConfirm').value;
+      if (!name) { alert('Name is required.'); return; }
+      if (!roles.length) { alert('Select at least one role.'); return; }
+      if (pw && pw !== cpw) { alert('Passwords do not match.'); return; }
+
+      // Hide any previous error
+      document.getElementById('memberModalError').classList.add('hidden');
+
+      if (APP.useAPI) {
+        // Supabase-first: upsert member, then sync
+        try {
+          const allTeam = APP.team;
+          let member;
+          if (id) {
+            member = allTeam.find(m => m.id === id) || { id };
+            member = { ...member, name, email, role, roles, avatar: name[0].toUpperCase() };
+            if (pw) member.password = pw;
+          } else {
+            member = { id: 'u' + Date.now(), name, email, role, roles, avatar: name[0].toUpperCase(), password: pw || 'changeme123', color: 'bg-gray-700' };
+          }
+          await apiSaveMember(member);
+          renderAdmin(); closeMemberModal();
+          showToast(id ? 'Member updated.' : 'Member added successfully!');
+        } catch(e) {
+          // Show error inside the modal
+          const msg = e.message.includes('already exists') || e.message.includes('409')
+            ? 'This email is already used by another member. Please use a different email.'
+            : 'Could not save member — ' + e.message;
+          document.getElementById('memberModalErrorText').textContent = msg;
+          document.getElementById('memberModalError').classList.remove('hidden');
+        }
+        return;
+      }
+
+      // localStorage fallback
+      const allTeam = APP.team;
+      if (id) {
+        const idx = allTeam.findIndex(u => u.id === id);
+        if (idx !== -1) {
+          allTeam[idx].name = name; allTeam[idx].email = email;
+          allTeam[idx].role = role; allTeam[idx].roles = roles; allTeam[idx].avatar = name[0].toUpperCase();
+          if (pw) allTeam[idx].password = pw;
+        }
+      } else {
+        allTeam.push({ id: 'u' + Date.now(), name, email, role, roles, password: pw || '', avatar: name[0].toUpperCase(), color: 'bg-gray-700' });
+      }
+      APP.team = allTeam;
+      saveData(); renderAdmin(); closeMemberModal();
+    }
+
+    function deleteMember(id) {
+      const u = APP.team.find(u => u.id === id);
+      if (!u) return;
+      const taskCount = APP.tasks.filter(t => t.assignedTo === u.name || t.designer === u.name || t.createdBy === u.name).length;
+      const msg = taskCount
+        ? `Remove "${u.name}"? They are referenced in ${taskCount} task(s) — those tasks will become unassigned. This cannot be undone.`
+        : `Remove "${u.name}" from the team? This cannot be undone.`;
+      if (!confirm(msg)) return;
+      // Clear references in tasks instead of deleting them
+      APP.tasks = APP.tasks.map(t => {
+        const updated = { ...t };
+        if (t.assignedTo === u.name) updated.assignedTo = '';
+        if (t.designer   === u.name) updated.designer   = '';
+        if (t.createdBy  === u.name) updated.createdBy  = 'Former member';
+        return updated;
+      });
+      // Clear references in clients
+      APP.clients = APP.clients.map(c => {
+        const updated = { ...c };
+        if (c.pm        === u.name) updated.pm        = '';
+        if (c.executive === u.name) updated.executive = '';
+        if (c.designer  === u.name) updated.designer  = '';
+        return updated;
+      });
+      APP.team = APP.team.filter(m => m.id !== id);
+      apiDeleteMember(id); saveData(); renderAdmin();
+    }
+
+    // Change Password
+    function openPwModal(userId) {
+      const u = APP.team.find(u => u.id === userId);
+      if (!u) return;
+      document.getElementById('pwUserId').value = userId;
+      document.getElementById('pwUserName').textContent = u.name;
+      document.getElementById('newPw').value = '';
+      document.getElementById('confirmPw').value = '';
+      document.getElementById('pwError').classList.add('hidden');
+      document.getElementById('pwModal').classList.add('open');
+    }
+    function closePwModal() { document.getElementById('pwModal').classList.remove('open'); }
+
+    function savePassword() {
+      const id = document.getElementById('pwUserId').value;
+      const pw = document.getElementById('newPw').value;
+      const cpw = document.getElementById('confirmPw').value;
+      if (!pw) { showToast('Enter a new password.'); return; }
+      if (pw !== cpw) { document.getElementById('pwError').classList.remove('hidden'); return; }
+      document.getElementById('pwError').classList.add('hidden');
+      const allTeamPw = APP.team;
+      const idx = allTeamPw.findIndex(u => u.id === id);
+      if (idx !== -1) allTeamPw[idx].password = pw;
+      APP.team = allTeamPw;
+      saveData(); if(APP.useAPI) apiSaveMember(allTeamPw[idx]);
+      // Show success state inside modal
+      const body = document.querySelector('#pwModal .p-6');
+      body.innerHTML = `
+        <div class="flex flex-col items-center py-6 gap-4">
+          <div class="w-14 h-14 rounded-full bg-green-500/15 border border-green-500/30 flex items-center justify-center">
+            <i class="fa-solid fa-circle-check text-green-400 text-2xl"></i>
+          </div>
+          <div class="text-center">
+            <p class="text-base font-semibold text-white">Password Updated</p>
+            <p class="text-sm text-gray-400 mt-1">Password for <span class="text-white font-medium">${document.getElementById('pwUserName').textContent}</span> has been changed successfully.</p>
+          </div>
+        </div>`;
+      document.querySelector('#pwModal .flex.justify-end').innerHTML = `
+        <button onclick="closePwModal()" class="btn-primary px-8">Done</button>`;
+    }
+
+    function toggleMemberPw() {
+      const i = document.getElementById('memberPassword');
+      const e = document.getElementById('memberEyeIcon');
+      i.type = i.type === 'password' ? 'text' : 'password';
+      e.className = i.type === 'password' ? 'fa-solid fa-eye text-sm' : 'fa-solid fa-eye-slash text-sm';
+    }
+
+    function togglePw(inputId, iconId) {
+      const i = document.getElementById(inputId);
+      const e = document.getElementById(iconId);
+      i.type = i.type === 'password' ? 'text' : 'password';
+      e.className = i.type === 'password' ? 'fa-solid fa-eye text-sm' : 'fa-solid fa-eye-slash text-sm';
+    }
+
+    function showToast(msg) {
+      const t = document.createElement('div');
+      t.className = 'fixed bottom-6 right-6 bg-green-600 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-lg z-50 fade-in';
+      t.innerHTML = `<i class="fa-solid fa-circle-check mr-2"></i>${msg}`;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3000);
+    }
+
+    // ===== PIPELINE STAGES =====
+    const DEFAULT_PIPELINE_STAGES = [
+      { id:'new',               label:'New',                desc:'Task just created',                  color:'bg-blue-500',    core:true  },
+      { id:'ready_to_designer', label:'Ready to Designer',  desc:'Creator finished, waiting for designer', color:'bg-violet-500', core:false },
+      { id:'with_designer',     label:'With Designer',      desc:'Designer is working on it',          color:'bg-purple-500',  core:false },
+      { id:'pending_review',    label:'Pending PM Review',  desc:'Design done, PM needs to approve',   color:'bg-yellow-500',  core:false },
+      { id:'changes_requested', label:'Changes Requested',  desc:'PM asked for modifications',         color:'bg-red-500',     core:false },
+      { id:'additional_content',label:'Additional Content', desc:'PM requested extra content',         color:'bg-orange-500',  core:false },
+      { id:'ready_to_post',     label:'Ready to Post',      desc:'Approved, ready to go live',         color:'bg-green-500',   core:false },
+      { id:'posted',            label:'Posted',             desc:'Content is live, task complete',     color:'bg-emerald-500', core:true  },
+    ];
+
+    function getAdminPipelineStages() {
+      try {
+        const saved = localStorage.getItem('smm_pipeline_stages');
+        return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_PIPELINE_STAGES));
+      } catch { return JSON.parse(JSON.stringify(DEFAULT_PIPELINE_STAGES)); }
+    }
+
+    let _adminStages = getAdminPipelineStages();
+
+    let _dragSrcIdx = null;
+
+    function renderAdminPipelineList() {
+      const el = document.getElementById('adminPipelineList');
+      if (!el) return;
+      el.innerHTML = _adminStages.map((s, i) => `
+        <div class="stage-drag-row flex items-center gap-3 p-3 bg-gray-800 rounded-xl border-2 border-gray-700 hover:border-gray-600 transition-all cursor-default select-none"
+          draggable="true"
+          data-idx="${i}"
+          ondragstart="stageDragStart(event,${i})"
+          ondragover="stageDragOver(event)"
+          ondragleave="stageDragLeave(event)"
+          ondrop="stageDrop(event,${i})"
+          ondragend="stageDragEnd()">
+          <div class="cursor-grab active:cursor-grabbing text-gray-500 hover:text-violet-400 transition-colors px-1" title="Drag to reorder">
+            <i class="fa-solid fa-grip-vertical text-base"></i>
+          </div>
+          <span class="text-gray-500 text-xs w-5 text-center font-mono">${i+1}</span>
+          <span class="w-3 h-3 rounded-full ${s.color} flex-shrink-0"></span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-white">${s.label}</p>
+            <p class="text-xs text-gray-500 truncate">${s.desc || '—'}</p>
+          </div>
+          ${s.core
+            ? `<span class="text-xs bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">Core</span>`
+            : `<div class="flex gap-2">
+                <button onclick="editStage(${i})" class="text-xs text-gray-400 hover:text-blue-400 transition-colors px-2 py-1 rounded-lg hover:bg-blue-500/10">
+                  <i class="fa-solid fa-pen text-xs"></i>
+                </button>
+                <button onclick="deleteStage(${i})" class="text-xs text-gray-400 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10">
+                  <i class="fa-solid fa-trash text-xs"></i>
+                </button>
+               </div>`}
+        </div>`).join('');
+    }
+
+    function stageDragStart(e, i) {
+      _dragSrcIdx = i;
+      e.dataTransfer.effectAllowed = 'move';
+      e.currentTarget.style.opacity = '0.4';
+    }
+
+    function stageDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      e.currentTarget.classList.add('border-violet-500');
+    }
+
+    function stageDragLeave(e) {
+      e.currentTarget.classList.remove('border-violet-500');
+    }
+
+    function stageDrop(e, i) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('border-violet-500');
+      if (_dragSrcIdx === null || _dragSrcIdx === i) return;
+      const moved = _adminStages.splice(_dragSrcIdx, 1)[0];
+      _adminStages.splice(i, 0, moved);
+      _dragSrcIdx = null;
+      renderAdminPipelineList();
+    }
+
+    function stageDragEnd() {
+      _dragSrcIdx = null;
+      document.querySelectorAll('.stage-drag-row').forEach(r => {
+        r.style.opacity = '1';
+        r.classList.remove('border-violet-500');
+      });
+    }
+
+    function moveStage(i, dir) {
+      const j = i + dir;
+      if (j < 0 || j >= _adminStages.length) return;
+      [_adminStages[i], _adminStages[j]] = [_adminStages[j], _adminStages[i]];
+      renderAdminPipelineList();
+    }
+
+    function deleteStage(i) {
+      if (!confirm(`Delete stage "${_adminStages[i].label}"? Tasks in this stage will not be affected.`)) return;
+      _adminStages.splice(i, 1);
+      renderAdminPipelineList();
+    }
+
+    const STAGE_COLORS = ['bg-blue-500','bg-violet-500','bg-purple-500','bg-pink-500','bg-red-500','bg-orange-500','bg-yellow-500','bg-green-500','bg-emerald-500','bg-teal-500','bg-cyan-500','bg-indigo-500','bg-gray-500','bg-slate-500','bg-rose-500','bg-lime-500'];
+
+    function buildColorPicker() {
+      document.getElementById('stageColorPicker').innerHTML = STAGE_COLORS.map(c =>
+        `<button type="button" data-color="${c}" onclick="selectStageColor('${c}')"
+          class="stage-color-swatch w-7 h-7 rounded-full ${c} border-2 border-transparent hover:scale-110 transition-transform"></button>`
+      ).join('');
+    }
+
+    function openAddStageModal() {
+      document.getElementById('stageModalTitle').textContent = 'Add Stage';
+      document.getElementById('stageEditIndex').value = '';
+      document.getElementById('stageLabel').value = '';
+      document.getElementById('stageDesc').value = '';
+      buildColorPicker();
+      selectStageColor('bg-blue-500');
+      document.getElementById('stageModal').classList.add('open');
+    }
+
+    function editStage(i) {
+      const s = _adminStages[i];
+      document.getElementById('stageModalTitle').textContent = 'Edit Stage';
+      document.getElementById('stageEditIndex').value = i;
+      document.getElementById('stageLabel').value = s.label;
+      document.getElementById('stageDesc').value = s.desc || '';
+      buildColorPicker();
+      selectStageColor(s.color);
+      document.getElementById('stageModal').classList.add('open');
+    }
+
+    function closeStageModal() { document.getElementById('stageModal').classList.remove('open'); }
+
+    function selectStageColor(color) {
+      document.getElementById('stageColor').value = color;
+      document.querySelectorAll('.stage-color-swatch').forEach(b => {
+        b.classList.toggle('ring-2', b.dataset.color === color);
+        b.classList.toggle('ring-white', b.dataset.color === color);
+        b.classList.toggle('scale-110', b.dataset.color === color);
+      });
+    }
+
+    function saveStage() {
+      const label = document.getElementById('stageLabel').value.trim();
+      if (!label) { showToast('Stage name is required.', 'error'); return; }
+      const desc  = document.getElementById('stageDesc').value.trim();
+      const color = document.getElementById('stageColor').value;
+      const idx   = document.getElementById('stageEditIndex').value;
+      const id    = label.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
+      if (idx !== '') {
+        _adminStages[parseInt(idx)] = { ..._adminStages[parseInt(idx)], label, desc, color, id };
+      } else {
+        _adminStages.splice(_adminStages.length - 1, 0, { id, label, desc, color, core: false });
+      }
+      renderAdminPipelineList();
+      closeStageModal();
+    }
+
+    function savePipelineStages() {
+      localStorage.setItem('smm_pipeline_stages', JSON.stringify(_adminStages));
+      showToast('Pipeline stages saved! Kanban board updated.');
+    }
+
+    // ===== BRANDING =====
+    function getBrandingSettings() {
+      try { return JSON.parse(localStorage.getItem('smm_branding') || '{}'); } catch { return {}; }
+    }
+
+    function previewBrandLogo(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        const src = ev.target.result;
+        const imgTag = `<img src="${src}" class="w-full h-full object-contain"/>`;
+        document.getElementById('previewLogoSidebar').innerHTML = imgTag;
+        document.getElementById('previewLogoLogin').innerHTML = imgTag;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function updateBrandingPreviewText() {
+      const n1 = document.getElementById('brandName1').value || 'SOCIAL MEDIA';
+      const n2 = document.getElementById('brandName2').value || 'MANAGEMENT';
+      document.getElementById('previewName1Sidebar').textContent = n1;
+      document.getElementById('previewName2Sidebar').textContent = n2;
+      document.getElementById('previewName1Login').textContent = n1;
+      document.getElementById('previewName2Login').textContent = n2;
+    }
+
+    function saveBrandingSettings() {
+      const n1 = document.getElementById('brandName1').value.trim() || 'SOCIAL MEDIA';
+      const n2 = document.getElementById('brandName2').value.trim() || 'MANAGEMENT';
+      const file = document.getElementById('brandLogoInput').files[0];
+      const existing = getBrandingSettings();
+
+      function doSave(logoBase64) {
+        const branding = { name1: n1, name2: n2, logo: logoBase64 || existing.logo || '' };
+        localStorage.setItem('smm_branding', JSON.stringify(branding));
+        showToast('Branding saved! Refresh any page to see the update.');
+      }
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = ev => doSave(ev.target.result);
+        reader.readAsDataURL(file);
+      } else {
+        doSave(null);
+      }
+    }
+
+    function loadBrandingIntoForm() {
+      const b = getBrandingSettings();
+      if (b.name1) document.getElementById('brandName1').value = b.name1;
+      if (b.name2) document.getElementById('brandName2').value = b.name2;
+      if (b.logo) {
+        const imgTag = `<img src="${b.logo}" class="w-full h-full object-contain"/>`;
+        document.getElementById('previewLogoSidebar').innerHTML = imgTag;
+        document.getElementById('previewLogoLogin').innerHTML = imgTag;
+      }
+      if (b.name1) { document.getElementById('previewName1Sidebar').textContent = b.name1; document.getElementById('previewName1Login').textContent = b.name1; }
+      if (b.name2) { document.getElementById('previewName2Sidebar').textContent = b.name2; document.getElementById('previewName2Login').textContent = b.name2; }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const user = pageInit();
+      if (!user) return;
+      renderAdmin();
+      renderPermsReference();
+      renderPermissionsGrid();
+      updateAPIStatusBadge();
+      renderAdminPipelineList();
+      loadBrandingIntoForm();
+      document.getElementById('brandName1').addEventListener('input', updateBrandingPreviewText);
+      document.getElementById('brandName2').addEventListener('input', updateBrandingPreviewText);
+      if (APP.useAPI) syncFromAPI().then(() => { renderAdmin(); });
+      document.addEventListener('smm:synced', () => { renderAdmin(); });
+    });
+
+    function updateAPIStatusBadge() {
+      const url    = localStorage.getItem('smm_supabase_url') || '';
+      const key    = localStorage.getItem('smm_supabase_key') || '';
+      const badge  = document.getElementById('apiStatusBadge');
+      const input  = document.getElementById('apiUrlInput');
+      const keyInput = document.getElementById('apiKeyInput');
+      if (!badge) return;
+      if (url && key) {
+        badge.className = 'ml-auto text-xs px-2.5 py-1 rounded-full font-medium bg-green-500/15 text-green-400';
+        badge.innerHTML = '<i class="fa-solid fa-circle text-green-400 text-[8px] mr-1 animate-pulse"></i>Connected';
+      } else {
+        badge.className = 'ml-auto text-xs px-2.5 py-1 rounded-full font-medium bg-gray-800 text-gray-400';
+        badge.textContent = 'Not connected';
+      }
+      if (input && !input.value) input.value = url;
+      if (keyInput && !keyInput.value) keyInput.value = key;
+    }
+
+    async function testAPIConnection() {
+      const url = document.getElementById('apiUrlInput').value.trim().replace(/\/$/, '');
+      const key = document.getElementById('apiKeyInput').value.trim();
+      const result = document.getElementById('apiTestResult');
+      if (!url || !key) { showToast('Enter the Supabase URL and key first', 'error'); return; }
+      result.className = 'rounded-lg px-4 py-3 text-sm bg-gray-800 text-gray-400';
+      result.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Testing connection…';
+      result.classList.remove('hidden');
+      try {
+        const res = await fetch(url + '/rest/v1/smm_clients?select=id&limit=1', {
+          headers: { apikey: key, Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (res.ok) {
+          result.className = 'rounded-lg px-4 py-3 text-sm bg-green-500/10 text-green-400 border border-green-500/20';
+          result.innerHTML = '<i class="fa-solid fa-circle-check mr-2"></i>Connected — Supabase is reachable';
+        } else {
+          throw new Error('Server responded with ' + res.status);
+        }
+      } catch (err) {
+        result.className = 'rounded-lg px-4 py-3 text-sm bg-red-500/10 text-red-400 border border-red-500/20';
+        result.innerHTML = `<i class="fa-solid fa-circle-xmark mr-2"></i>Could not connect — ${err.message}`;
+      }
+    }
+
+    function saveAPIUrl() {
+      const url = document.getElementById('apiUrlInput').value.trim().replace(/\/$/, '');
+      const key = document.getElementById('apiKeyInput').value.trim();
+      if (!url || !key) { showToast('Enter the Supabase URL and key first', 'error'); return; }
+      localStorage.setItem('smm_supabase_url', url);
+      localStorage.setItem('smm_supabase_key', key);
+      updateAPIStatusBadge();
+      showToast('Supabase connected — data will sync on next page load');
+    }
+
+    function disconnectAPI() {
+      localStorage.removeItem('smm_supabase_url');
+      localStorage.removeItem('smm_supabase_key');
+      document.getElementById('apiUrlInput').value = '';
+      document.getElementById('apiKeyInput').value = '';
+      document.getElementById('apiTestResult').classList.add('hidden');
+      updateAPIStatusBadge();
+      showToast('Disconnected — using local data only');
+    }
+  </script>
+</body>
+</html>

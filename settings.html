@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SMM-MANAGER — Settings</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/style.css"/>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans">
+  <div id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-gray-900 border-r border-gray-800 flex flex-col z-50"></div>
+
+  <div class="ml-64 min-h-screen flex flex-col">
+    <header class="sticky top-0 z-40 bg-gray-950/80 backdrop-blur border-b border-gray-800 px-8 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">Settings</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Configure your workspace preferences</p>
+      </div>
+    </header>
+
+    <main class="flex-1 px-8 py-6">
+      <div class="max-w-3xl space-y-6">
+
+        <!-- Workspace Info -->
+        <div id="wsSection" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-800">
+            <h2 class="text-sm font-semibold text-white">Workspace</h2>
+            <p class="text-xs text-gray-500 mt-0.5">Basic information about your team workspace</p>
+          </div>
+          <div class="p-6 space-y-4">
+            <div class="flex items-center gap-4">
+              <div class="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center">
+                <i class="fa-solid fa-layer-group text-white text-2xl"></i>
+              </div>
+              <div>
+                <p class="text-base font-bold text-white">SMM-MANAGER</p>
+                <p class="text-xs text-gray-500 mt-0.5">Internal SMM team operations dashboard</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4 pt-2">
+              <div>
+                <label class="form-label">Workspace Name</label>
+                <input id="wsName" type="text" class="form-input" value="SMM-MANAGER"/>
+              </div>
+              <div>
+                <label class="form-label">Default Currency</label>
+                <select id="wsCurrency" class="form-input">
+                  <option value="PKR" selected>PKR — Pakistani Rupee</option>
+                  <option value="USD">USD — US Dollar</option>
+                  <option value="AED">AED — UAE Dirham</option>
+                  <option value="GBP">GBP — British Pound</option>
+                </select>
+              </div>
+            </div>
+            <button onclick="saveWorkspace()" class="btn-primary text-sm">Save Changes</button>
+          </div>
+        </div>
+
+        <!-- Connection & Integrations -->
+        <div id="backendSection" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-800 flex items-center gap-3">
+            <div>
+              <h2 class="text-sm font-semibold text-white">Backend Connection</h2>
+              <p class="text-xs text-gray-500 mt-0.5">Connect to Supabase for shared, real-time data across all devices</p>
+            </div>
+            <span id="apiStatusBadge" class="ml-auto text-xs px-2.5 py-1 rounded-full font-medium bg-gray-800 text-gray-400">Not connected</span>
+          </div>
+          <div class="p-6 space-y-4">
+            <div>
+              <label class="form-label">Supabase Project URL</label>
+              <input id="supabaseUrlInput" type="url" class="form-input" placeholder="https://xxxxx.supabase.co"/>
+            </div>
+            <div>
+              <label class="form-label">Supabase Anon/Publishable Key</label>
+              <div class="flex gap-2">
+                <input id="supabaseKeyInput" type="text" class="form-input flex-1" placeholder="eyJhbGciOi..."/>
+                <button onclick="testAPIConnection()" class="btn-secondary px-4 whitespace-nowrap">
+                  <i class="fa-solid fa-satellite-dish mr-1.5"></i>Test
+                </button>
+              </div>
+              <p class="text-xs text-gray-600 mt-1.5">Found in your Supabase project under Settings → API</p>
+            </div>
+            <div id="apiTestResult" class="hidden rounded-lg px-4 py-3 text-sm"></div>
+            <div class="flex gap-3">
+              <button onclick="saveAPIUrl()" class="btn-primary px-5"><i class="fa-solid fa-link mr-1.5"></i>Save & Connect</button>
+              <button onclick="disconnectAPI()" class="btn-secondary px-5"><i class="fa-solid fa-link-slash mr-1.5"></i>Disconnect</button>
+            </div>
+          </div>
+          <div class="px-6 pb-6 pt-2 border-t border-gray-800">
+            <label class="form-label">Google Sheets — Apps Script URL</label>
+            <div class="flex gap-2">
+              <input id="sheetsUrlInput" type="url" class="form-input flex-1" placeholder="https://script.google.com/macros/s/.../exec"/>
+              <button onclick="saveSheetsUrl()" class="btn-primary px-5"><i class="fa-solid fa-floppy-disk mr-1.5"></i>Save</button>
+            </div>
+            <p class="text-xs text-gray-600 mt-1.5">Used by the Clients page "Export to Master" and "Pull from Intake" buttons.</p>
+          </div>
+        </div>
+
+        <!-- Pipeline Stages -->
+        <div id="pipelineSection" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-800">
+            <h2 class="text-sm font-semibold text-white">Pipeline Stages</h2>
+            <p class="text-xs text-gray-500 mt-0.5">The content workflow stages visible on the Kanban board</p>
+          </div>
+          <div class="p-6 space-y-2" id="pipelineStagesList"></div>
+        </div>
+
+        <!-- Notification Preferences -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-800">
+            <h2 class="text-sm font-semibold text-white">Alert Preferences</h2>
+            <p class="text-xs text-gray-500 mt-0.5">Control which alerts appear on the dashboard</p>
+          </div>
+          <div class="p-6 space-y-4" id="alertPrefsList"></div>
+        </div>
+
+        <!-- Data Management -->
+        <div id="dataSection" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-800">
+            <h2 class="text-sm font-semibold text-white">Data Management</h2>
+            <p class="text-xs text-gray-500 mt-0.5">Export or reset your workspace data</p>
+          </div>
+          <div class="p-6 space-y-3">
+            <div class="flex items-center justify-between p-4 bg-gray-800 rounded-xl border border-gray-700">
+              <div>
+                <p class="text-sm font-medium text-white">Export All Data</p>
+                <p class="text-xs text-gray-500 mt-0.5">Download all clients, tasks & team data as JSON</p>
+              </div>
+              <button onclick="exportData()" class="btn-secondary text-sm flex items-center gap-2">
+                <i class="fa-solid fa-download text-xs"></i> Export
+              </button>
+            </div>
+            <div class="flex items-center justify-between p-4 bg-gray-800 rounded-xl border border-gray-700">
+              <div>
+                <p class="text-sm font-medium text-white">Import Data</p>
+                <p class="text-xs text-gray-500 mt-0.5">Restore from a previously exported JSON file</p>
+              </div>
+              <label class="btn-secondary text-sm flex items-center gap-2 cursor-pointer">
+                <i class="fa-solid fa-upload text-xs"></i> Import
+                <input type="file" accept=".json" onchange="importData(event)" class="hidden"/>
+              </label>
+            </div>
+            <div class="flex items-center justify-between p-4 bg-red-500/5 rounded-xl border border-red-500/20">
+              <div>
+                <p class="text-sm font-medium text-red-400">Reset All Data</p>
+                <p class="text-xs text-gray-500 mt-0.5">Clear all tasks, clients & team data. Cannot be undone.</p>
+              </div>
+              <button onclick="resetData()" class="text-sm bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+                <i class="fa-solid fa-trash text-xs"></i> Reset
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Change Password — visible to all roles -->
+        <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden" id="changePasswordSection">
+          <div class="px-6 py-4 border-b border-gray-800">
+            <h2 class="text-sm font-semibold text-white">Change My Password</h2>
+            <p class="text-xs text-gray-500 mt-0.5">Update your login password</p>
+          </div>
+          <div class="p-6 space-y-4">
+            <div>
+              <label class="form-label">Current Password *</label>
+              <div class="relative">
+                <input id="curPw" type="password" class="form-input pr-10" placeholder="Enter current password"/>
+                <button type="button" onclick="toggleSettingsPw('curPw','curPwEye')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                  <i id="curPwEye" class="fa-solid fa-eye text-sm"></i>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="form-label">New Password *</label>
+              <div class="relative">
+                <input id="newSettingsPw" type="password" class="form-input pr-10" placeholder="New password"/>
+                <button type="button" onclick="toggleSettingsPw('newSettingsPw','newPwEye')" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                  <i id="newPwEye" class="fa-solid fa-eye text-sm"></i>
+                </button>
+              </div>
+            </div>
+            <div>
+              <label class="form-label">Confirm New Password *</label>
+              <input id="confirmSettingsPw" type="password" class="form-input" placeholder="Repeat new password"/>
+            </div>
+            <div id="settingsPwError" class="hidden text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"></div>
+            <button onclick="changeMyPassword()" class="btn-primary text-sm">Update Password</button>
+          </div>
+        </div>
+
+        <!-- System Info -->
+        <div id="sysSection" class="bg-gray-900 border border-gray-800 rounded-xl p-6">
+          <h2 class="text-sm font-semibold text-white mb-4">System Info</h2>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-gray-800 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Version</p>
+              <p class="text-sm text-white font-medium">SMM-MANAGER v1.0</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Storage</p>
+              <p class="text-sm text-white font-medium">Browser localStorage</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Total Clients</p>
+              <p class="text-sm text-white font-medium" id="sysClients">—</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Total Tasks</p>
+              <p class="text-sm text-white font-medium" id="sysTasks">—</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Team Members</p>
+              <p class="text-sm text-white font-medium" id="sysTeam">—</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-3">
+              <p class="text-xs text-gray-500 mb-1">Built With</p>
+              <p class="text-sm text-white font-medium">HTML · Tailwind · JS</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="hidden fixed bottom-6 right-6 bg-green-600 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-lg z-50 fade-in">
+    <i class="fa-solid fa-circle-check mr-2"></i><span id="toastMsg">Saved</span>
+  </div>
+
+  <script src="assets/js/app.js"></script>
+  <script>
+    function showToast(msg) {
+      document.getElementById('toastMsg').textContent = msg;
+      const t = document.getElementById('toast');
+      t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 3000);
+    }
+
+    const PIPELINE_STAGES = [
+      { id:'new', label:'New', desc:'Task just created by PM', color:'bg-blue-500' },
+      { id:'ready_to_designer', label:'Ready to Designer', desc:'Creator finished, waiting for designer', color:'bg-violet-500' },
+      { id:'with_designer', label:'With Designer', desc:'Designer is working on it', color:'bg-purple-500' },
+      { id:'pending_review', label:'Pending PM Review', desc:'Design done, PM needs to approve', color:'bg-yellow-500' },
+      { id:'changes_requested', label:'Changes Requested', desc:'PM asked for modifications', color:'bg-red-500' },
+      { id:'additional_content', label:'Additional Content', desc:'PM requested extra content', color:'bg-orange-500' },
+      { id:'ready_to_post', label:'Ready to Post', desc:'Approved, ready to go live', color:'bg-green-500' },
+      { id:'posted', label:'Posted', desc:'Content is live, task complete', color:'bg-emerald-500' },
+    ];
+
+    const ALERT_DEFS = [
+      { id:'alert_contract', label:'Contract Expiry Alerts', desc:'Warn when client contracts are ending within 30 days', default: true },
+      { id:'alert_overdue', label:'Overdue Task Alerts', desc:'Highlight tasks past their due date', default: true },
+      { id:'alert_stuck', label:'Stuck Task Alerts', desc:'Flag tasks with no updates for 3+ days', default: true },
+      { id:'alert_pending', label:'Pending Review Alerts', desc:'Remind when tasks are waiting for PM review 2+ days', default: false },
+    ];
+
+    function getAlertPrefs() {
+      const saved = JSON.parse(localStorage.getItem('smm_alert_prefs') || '{}');
+      const prefs = {};
+      ALERT_DEFS.forEach(a => prefs[a.id] = (a.id in saved) ? saved[a.id] : a.default);
+      return prefs;
+    }
+
+    function renderPipelineStages() {
+      document.getElementById('pipelineStagesList').innerHTML =
+        PIPELINE_STAGES.map((s, i) => `
+          <div class="flex items-center gap-3 p-3 bg-gray-800 rounded-lg border border-gray-700">
+            <span class="text-gray-600 text-xs w-4 text-center font-mono">${i+1}</span>
+            <span class="w-2.5 h-2.5 rounded-full ${s.color} flex-shrink-0"></span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-white">${s.label}</p>
+              <p class="text-xs text-gray-500">${s.desc}</p>
+            </div>
+            <i class="fa-solid fa-lock text-gray-700 text-xs" title="System stage"></i>
+          </div>`).join('') +
+        `<p class="text-xs text-gray-600 mt-2 italic">Pipeline stages are fixed to match your workflow. Contact admin to modify.</p>`;
+    }
+
+    function renderAlertPrefs() {
+      const prefs = getAlertPrefs();
+      document.getElementById('alertPrefsList').innerHTML =
+        ALERT_DEFS.map(n => {
+          const on = prefs[n.id];
+          return `
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-white">${n.label}</p>
+              <p class="text-xs text-gray-500 mt-0.5">${n.desc}</p>
+            </div>
+            <button onclick="toggleAlert(this)" data-id="${n.id}" class="relative w-11 h-6 rounded-full transition-colors duration-200 ${on ? 'bg-indigo-600' : 'bg-gray-700'}" role="switch">
+              <span class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${on ? 'translate-x-5' : 'translate-x-0'}"></span>
+            </button>
+          </div>`;
+        }).join('');
+    }
+
+    function loadWorkspace() {
+      const ws = JSON.parse(localStorage.getItem('smm_workspace') || '{}');
+      if (ws.name) document.getElementById('wsName').value = ws.name;
+      if (ws.currency) document.getElementById('wsCurrency').value = ws.currency;
+    }
+
+    function saveWorkspace() {
+      const ws = {
+        name: document.getElementById('wsName').value.trim() || 'SMM-MANAGER',
+        currency: document.getElementById('wsCurrency').value,
+      };
+      localStorage.setItem('smm_workspace', JSON.stringify(ws));
+      showToast('Workspace settings saved');
+    }
+
+    function toggleAlert(btn) {
+      const isOn = btn.classList.contains('bg-indigo-600');
+      btn.classList.toggle('bg-indigo-600', !isOn);
+      btn.classList.toggle('bg-gray-700', isOn);
+      const dot = btn.querySelector('span');
+      dot.classList.toggle('translate-x-5', !isOn);
+      dot.classList.toggle('translate-x-0', isOn);
+      const prefs = getAlertPrefs();
+      prefs[btn.dataset.id] = !isOn;
+      localStorage.setItem('smm_alert_prefs', JSON.stringify(prefs));
+    }
+
+    // ===== Backend Connection (Supabase) =====
+    function updateAPIStatusBadgeLocal() {
+      const url = localStorage.getItem('smm_supabase_url') || '';
+      const key = localStorage.getItem('smm_supabase_key') || '';
+      const badge = document.getElementById('apiStatusBadge');
+      const urlInput = document.getElementById('supabaseUrlInput');
+      const keyInput = document.getElementById('supabaseKeyInput');
+      if (urlInput && !urlInput.value) urlInput.value = url;
+      if (keyInput && !keyInput.value) keyInput.value = key;
+      if (url && key) {
+        badge.className = 'ml-auto text-xs px-2.5 py-1 rounded-full font-medium bg-green-500/15 text-green-400';
+        badge.innerHTML = '<i class="fa-solid fa-circle text-green-400 text-[8px] mr-1 animate-pulse"></i>Connected';
+      } else {
+        badge.className = 'ml-auto text-xs px-2.5 py-1 rounded-full font-medium bg-gray-800 text-gray-400';
+        badge.textContent = 'Not connected';
+      }
+    }
+
+    async function testAPIConnection() {
+      const url = document.getElementById('supabaseUrlInput').value.trim().replace(/\/$/, '');
+      const key = document.getElementById('supabaseKeyInput').value.trim();
+      const result = document.getElementById('apiTestResult');
+      if (!url || !key) { showToast('Enter the Supabase URL and key first'); return; }
+      result.className = 'rounded-lg px-4 py-3 text-sm bg-gray-800 text-gray-400';
+      result.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Testing connection…';
+      result.classList.remove('hidden');
+      try {
+        const res = await fetch(url + '/rest/v1/smm_clients?select=id&limit=1', {
+          headers: { apikey: key, Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (res.ok) {
+          result.className = 'rounded-lg px-4 py-3 text-sm bg-green-500/10 text-green-400 border border-green-500/20';
+          result.innerHTML = '<i class="fa-solid fa-circle-check mr-2"></i>Connected — Supabase is reachable';
+        } else {
+          throw new Error('Server responded with ' + res.status);
+        }
+      } catch (err) {
+        result.className = 'rounded-lg px-4 py-3 text-sm bg-red-500/10 text-red-400 border border-red-500/20';
+        result.innerHTML = `<i class="fa-solid fa-circle-xmark mr-2"></i>Could not connect — ${err.message}`;
+      }
+    }
+
+    function saveAPIUrl() {
+      const url = document.getElementById('supabaseUrlInput').value.trim().replace(/\/$/, '');
+      const key = document.getElementById('supabaseKeyInput').value.trim();
+      if (!url || !key) { showToast('Enter the Supabase URL and key first'); return; }
+      localStorage.setItem('smm_supabase_url', url);
+      localStorage.setItem('smm_supabase_key', key);
+      showToast('Supabase connected — reloading…');
+      setTimeout(() => location.reload(), 800);
+    }
+
+    function disconnectAPI() {
+      localStorage.removeItem('smm_supabase_url');
+      localStorage.removeItem('smm_supabase_key');
+      document.getElementById('supabaseUrlInput').value = '';
+      document.getElementById('supabaseKeyInput').value = '';
+      document.getElementById('apiTestResult').classList.add('hidden');
+      showToast('Disconnected — using local data only');
+      setTimeout(() => location.reload(), 800);
+    }
+
+    // ===== Google Sheets =====
+    function saveSheetsUrl() {
+      const url = document.getElementById('sheetsUrlInput').value.trim();
+      if (!url) { showToast('Enter an Apps Script URL first'); return; }
+      localStorage.setItem('smm_sheets_url', url);
+      showToast('Google Sheets URL saved');
+    }
+
+    function loadSheetsUrl() {
+      document.getElementById('sheetsUrlInput').value = localStorage.getItem('smm_sheets_url') || '';
+    }
+
+    function exportData() {
+      const data = { clients: APP.clients, tasks: APP.tasks, team: APP.team, exportedAt: new Date().toISOString() };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `smm-manager-export-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      showToast('Data exported successfully');
+    }
+
+    function importData(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          if (data.clients) APP.clients = data.clients;
+          if (data.tasks) APP.tasks = data.tasks;
+          if (data.team) APP.team = data.team;
+          saveData();
+          showToast('Data imported successfully');
+          updateSysInfo();
+        } catch { alert('Invalid JSON file.'); }
+      };
+      reader.readAsText(file);
+    }
+
+    function resetData() {
+      if (!confirm('This will delete ALL data including clients, tasks and team members. Are you absolutely sure?')) return;
+      if (!confirm('Last warning — this cannot be undone. Continue?')) return;
+      ['smm_clients','smm_tasks','smm_team','smm_user','smm_token','smm_intake',
+       'smm_workspace','smm_alert_prefs','smm_sheets_url'].forEach(k => localStorage.removeItem(k));
+      window.location.href = 'login.html';
+    }
+
+    function updateSysInfo() {
+      document.getElementById('sysClients').textContent = APP.clients.length;
+      document.getElementById('sysTasks').textContent = APP.tasks.length;
+      document.getElementById('sysTeam').textContent = APP.team.length;
+    }
+
+    function toggleSettingsPw(inputId, eyeId) {
+      const i = document.getElementById(inputId);
+      const e = document.getElementById(eyeId);
+      i.type = i.type === 'password' ? 'text' : 'password';
+      e.className = i.type === 'password' ? 'fa-solid fa-eye text-sm' : 'fa-solid fa-eye-slash text-sm';
+    }
+
+    function changeMyPassword() {
+      const user = APP.currentUser;
+      if (!user) return;
+      const cur = document.getElementById('curPw').value;
+      const nw  = document.getElementById('newSettingsPw').value;
+      const cnf = document.getElementById('confirmSettingsPw').value;
+      const errEl = document.getElementById('settingsPwError');
+      errEl.classList.add('hidden');
+      if (!cur || !nw) { errEl.textContent = 'All fields are required.'; errEl.classList.remove('hidden'); return; }
+      if (cur !== user.password) { errEl.textContent = 'Current password is incorrect.'; errEl.classList.remove('hidden'); return; }
+      if (nw !== cnf) { errEl.textContent = 'New passwords do not match.'; errEl.classList.remove('hidden'); return; }
+      // Update password — data intact, only password field changes
+      const idx = APP.team.findIndex(m => m.id === user.id);
+      if (idx !== -1) {
+        APP.team[idx].password = nw;
+        APP.currentUser.password = nw;
+        APP.team = APP.team;
+        saveData();
+        if (APP.useAPI) apiSaveMember(APP.team[idx]);
+      }
+      document.getElementById('curPw').value = '';
+      document.getElementById('newSettingsPw').value = '';
+      document.getElementById('confirmSettingsPw').value = '';
+      showToast('Password updated successfully!');
+    }
+
+    // IDs of sections only admins/PMs should see
+    const ADMIN_ONLY_SECTIONS = ['wsSection','backendSection','pipelineSection','dataSection','sysSection'];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const user = pageInit();
+      if (!user) return;
+      loadWorkspace();
+      renderPipelineStages();
+      renderAlertPrefs();
+      updateAPIStatusBadgeLocal();
+      loadSheetsUrl();
+      updateSysInfo();
+      if (APP.useAPI) syncFromAPI().then(() => updateSysInfo());
+      document.addEventListener('smm:synced', updateSysInfo);
+      // Hide admin-only sections for non-admin roles
+      if (user.role !== 'admin' && user.role !== 'project_manager') {
+        ADMIN_ONLY_SECTIONS.forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = 'none';
+        });
+      }
+    });
+  </script>
+</body>
+</html>

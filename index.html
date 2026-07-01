@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SMM-MANAGER — Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/style.css"/>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans">
+
+  <div id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-gray-900 border-r border-gray-800 flex flex-col z-50"></div>
+
+  <div class="ml-64 min-h-screen flex flex-col">
+    <header class="sticky top-0 z-40 bg-gray-950/80 backdrop-blur border-b border-gray-800 px-8 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">Dashboard</h1>
+        <p class="text-xs text-gray-500 mt-0.5" id="dashSubtitle">Loading...</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span class="text-xs text-gray-500 bg-gray-800 px-3 py-1.5 rounded-full" id="currentDate"></span>
+        <span id="roleBanner" class="text-xs px-3 py-1.5 rounded-full border"></span>
+        <div id="newTaskBtn"></div>
+      </div>
+    </header>
+
+    <main class="flex-1 px-8 py-6 space-y-6" id="dashMain"></main>
+  </div>
+
+  <!-- CHANGE TICKET DETAIL MODAL -->
+  <div id="changeTicketModal" class="modal-overlay" onclick="if(event.target===this)closeChangeTicket()">
+    <div class="modal-box" style="max-width:520px">
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-red-500/15 border border-red-500/30 flex items-center justify-center">
+            <i class="fa-solid fa-flag text-red-400 text-sm"></i>
+          </div>
+          <div>
+            <h2 class="text-base font-semibold text-white" id="ctClientName">Change Request</h2>
+            <p class="text-xs text-gray-500 mt-0.5" id="ctTaskMeta"></p>
+          </div>
+        </div>
+        <button onclick="closeChangeTicket()" class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-6 space-y-4" id="ctBody"></div>
+    </div>
+  </div>
+
+  <script src="assets/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const user = pageInit();
+      if (!user) return;
+
+      document.getElementById('dashSubtitle').textContent = `Welcome back, ${user.name} — here's what's happening today`;
+
+      // Show New Task button only for PM and Admin
+      if (can('create_task', user)) {
+        document.getElementById('newTaskBtn').innerHTML = `
+          <a href="tasks.html"><button class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            <i class="fa-solid fa-plus text-xs"></i> New Task
+          </button></a>`;
+      }
+
+      // Render immediately from cache, then sync fresh data from API
+      renderDashboard(user);
+
+      if (APP.useAPI) {
+        syncFromAPI().then(() => renderDashboard(user));
+      }
+
+      // Re-render whenever API sync fires (e.g. after any write or 30s auto-refresh)
+      document.addEventListener('smm:synced', () => renderDashboard(user));
+    });
+
+    function openChangeTicket(taskId) {
+      const t = APP.tasks.find(t => t.id === taskId);
+      if (!t) return;
+      const client = APP.clients.find(c => c.id === t.clientId);
+      const changeComments = (t.comments||[]).filter(cm => cm.type === 'change_request' || (!cm.type && t.status === 'changes_requested'));
+      const due = daysUntil(t.dueDate);
+
+      document.getElementById('ctClientName').textContent = t.clientName;
+      document.getElementById('ctTaskMeta').textContent = `${t.contentType} — ${t.title || t.topic || '—'} · ${t.platform}`;
+      document.getElementById('ctBody').innerHTML = `
+        <div class="grid grid-cols-2 gap-3">
+          <div class="bg-gray-800 rounded-lg p-3">
+            <p class="text-xs text-gray-500 mb-1">Client</p>
+            <p class="text-sm font-semibold text-white">${t.clientName}</p>
+            ${client?.pm ? `<p class="text-xs text-green-400 mt-0.5">Lead: ${client.pm}</p>` : ''}
+          </div>
+          <div class="bg-gray-800 rounded-lg p-3">
+            <p class="text-xs text-gray-500 mb-1">Due Date</p>
+            <p class="text-sm font-semibold ${due < 0 ? 'text-red-400' : due <= 2 ? 'text-orange-400' : 'text-white'}">${formatDate(t.dueDate)}</p>
+            <p class="text-xs ${due < 0 ? 'text-red-400' : 'text-gray-500'} mt-0.5">${due < 0 ? Math.abs(due)+'d overdue' : due === 0 ? 'Due today' : due+'d remaining'}</p>
+          </div>
+        </div>
+        <div>
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">What needs to change</p>
+          ${changeComments.length ? `
+            <div class="space-y-3">
+              ${changeComments.map(cm => `
+                <div class="flex gap-3 p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
+                  <div class="w-7 h-7 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                    <span class="text-xs font-bold text-red-400">${cm.by[0].toUpperCase()}</span>
+                  </div>
+                  <div>
+                    <p class="text-sm text-gray-200 leading-relaxed">${cm.text}</p>
+                    <p class="text-xs text-gray-600 mt-1">${cm.by} &bull; ${cm.date}</p>
+                  </div>
+                </div>`).join('')}
+            </div>` : `<p class="text-sm text-gray-600 italic">No change details added yet.</p>`}
+        </div>
+        ${t.brief ? `<div class="bg-gray-800 rounded-lg p-3"><p class="text-xs text-gray-500 mb-1">Original Brief</p><p class="text-sm text-gray-300">${t.brief}</p></div>` : ''}
+        <a href="tasks.html" class="btn-secondary w-full text-center text-sm block">
+          <i class="fa-solid fa-arrow-right mr-2"></i>Open in Tasks
+        </a>`;
+      document.getElementById('changeTicketModal').classList.add('open');
+    }
+
+    function closeChangeTicket() {
+      document.getElementById('changeTicketModal').classList.remove('open');
+    }
+
+    function renderDashboard(user) {
+      const allTasks = APP.tasks;
+      const myTasks  = getVisibleTasks(allTasks, user);
+      const clients  = getVisibleClients(APP.clients, user);
+      const main     = document.getElementById('dashMain');
+
+      const posted    = myTasks.filter(t => t.status === 'posted').length;
+      const inPipe    = myTasks.filter(t => t.status !== 'posted').length;
+      const pending   = myTasks.filter(t => t.status === 'pending_review').length;
+      const changes   = myTasks.filter(t => t.status === 'changes_requested').length;
+      const dueToday  = myTasks.filter(t => daysUntil(t.dueDate) === 0).length;
+      const withDes   = myTasks.filter(t => t.status === 'with_designer').length;
+
+      // Stats cards differ by role
+      let statsHTML = '';
+      if (user.role === 'admin' || user.role === 'project_manager') {
+        const totalBudget = clients.reduce((s,c) => s+(c.budget||0), 0);
+        const endingSoon  = clients.filter(c => { const d=daysUntil(c.endDate); return d>=0&&d<=30; }).length;
+        statsHTML = `
+          <div class="stat-card border-l-indigo-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Active Clients</p><div class="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center"><i class="fa-solid fa-users text-indigo-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${clients.length}</p>
+            <p class="text-xs ${endingSoon?'text-orange-400':'text-gray-600'} mt-1"><i class="fa-solid fa-clock mr-1"></i>${endingSoon} ending soon</p>
+          </div>
+          <div class="stat-card border-l-yellow-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">In Pipeline</p><div class="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center"><i class="fa-solid fa-spinner text-yellow-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${inPipe}</p>
+            <p class="text-xs text-yellow-400 mt-1"><i class="fa-solid fa-clock mr-1"></i>${dueToday} due today</p>
+          </div>
+          <div class="stat-card border-l-orange-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Pending Approval</p><div class="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center"><i class="fa-solid fa-hourglass-half text-orange-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${pending}</p>
+            <p class="text-xs text-orange-400 mt-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${changes} need changes</p>
+          </div>
+          <div class="stat-card border-l-green-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Total Budget/mo</p><div class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center"><i class="fa-solid fa-money-bill text-green-400 text-xs"></i></div></div>
+            <p class="text-2xl font-bold text-white">${getCurrency()} ${Math.round(totalBudget/1000)}K</p>
+            <p class="text-xs text-green-400 mt-1"><i class="fa-solid fa-circle-check mr-1"></i>${clients.length} clients</p>
+          </div>`;
+      } else if (user.role === 'creator') {
+        const myNew  = myTasks.filter(t=>t.status==='new').length;
+        const myDes  = myTasks.filter(t=>t.status==='with_designer').length;
+        const myPost = myTasks.filter(t=>t.status==='ready_to_post').length;
+        statsHTML = `
+          <div class="stat-card border-l-blue-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">My Tasks</p><div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><i class="fa-solid fa-list-check text-blue-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${myTasks.length}</p>
+            <p class="text-xs text-blue-400 mt-1"><i class="fa-solid fa-clock mr-1"></i>${dueToday} due today</p>
+          </div>
+          <div class="stat-card border-l-yellow-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">New (To Start)</p><div class="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center"><i class="fa-solid fa-inbox text-yellow-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${myNew}</p>
+            <p class="text-xs text-yellow-400 mt-1">Action needed</p>
+          </div>
+          <div class="stat-card border-l-purple-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">With Designer</p><div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center"><i class="fa-solid fa-palette text-purple-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${myDes}</p>
+            <p class="text-xs text-gray-600 mt-1">Waiting on ${(APP.team.find(m=>m.role==='designer')?.name)||'Designer'}</p>
+          </div>
+          <div class="stat-card border-l-green-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Ready to Post</p><div class="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center"><i class="fa-solid fa-circle-check text-green-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${myPost}</p>
+            <p class="text-xs text-green-400 mt-1">Approved by PM</p>
+          </div>`;
+      } else if (user.role === 'designer') {
+        const queue   = myTasks.filter(t=>t.status==='with_designer').length;
+        const done    = myTasks.filter(t=>t.status==='pending_review').length;
+        const changesD= myTasks.filter(t=>t.status==='changes_requested').length;
+        statsHTML = `
+          <div class="stat-card border-l-pink-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">My Design Queue</p><div class="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center"><i class="fa-solid fa-palette text-pink-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${myTasks.length}</p>
+            <p class="text-xs text-pink-400 mt-1">${dueToday} due today</p>
+          </div>
+          <div class="stat-card border-l-purple-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">To Design</p><div class="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center"><i class="fa-solid fa-pen-ruler text-purple-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${queue}</p>
+            <p class="text-xs text-yellow-400 mt-1">Action needed</p>
+          </div>
+          <div class="stat-card border-l-yellow-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Awaiting PM Review</p><div class="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center"><i class="fa-solid fa-hourglass-half text-yellow-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${done}</p>
+            <p class="text-xs text-gray-600 mt-1">Waiting on PM</p>
+          </div>
+          <div class="stat-card border-l-red-500">
+            <div class="flex items-center justify-between mb-3"><p class="text-xs text-gray-500 uppercase tracking-wider font-medium">Changes Needed</p><div class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center"><i class="fa-solid fa-rotate-left text-red-400 text-xs"></i></div></div>
+            <p class="text-3xl font-bold text-white">${changesD}</p>
+            <p class="text-xs text-red-400 mt-1">Revisions required</p>
+          </div>`;
+      }
+
+      // My tasks list (most recent 5)
+      const recentTasks = [...myTasks].sort((a,b) => new Date(b.createdDate)-new Date(a.createdDate)).slice(0,5);
+      const taskRows = recentTasks.map(t => {
+        const due = daysUntil(t.dueDate);
+        const dueLabel = due < 0 ? `<span class="text-red-400 text-xs">Overdue</span>` : due === 0 ? `<span class="text-orange-400 text-xs">Due today</span>` : `<span class="text-gray-500 text-xs">Due in ${due}d</span>`;
+        const pDot = { high:'bg-red-500', medium:'bg-yellow-500', low:'bg-green-500' }[t.priority] || 'bg-gray-500';
+        return `
+          <div class="task-row group cursor-pointer" onclick="window.location='tasks.html'">
+            <div class="flex items-center gap-3 flex-1 min-w-0">
+              <span class="priority-dot ${pDot}"></span>
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-white truncate">${t.clientName} — ${t.title || t.topic || '—'}</p>
+                <p class="text-xs text-gray-500 capitalize">${t.contentType} · ${t.platform}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              ${dueLabel}
+              ${statusBadge(t.status)}
+              <i class="fa-solid fa-chevron-right text-gray-600 text-xs group-hover:text-gray-400 transition-colors"></i>
+            </div>
+          </div>`;
+      }).join('') || `<p class="text-sm text-gray-600 text-center py-6">No tasks assigned to you yet.</p>`;
+
+      // Pipeline snapshot (admin/PM see all, others see filtered)
+      const snapTasks = user.role === 'admin' || user.role === 'project_manager' ? allTasks : myTasks;
+      const snapCols = [
+        { id:'new',            label:'New',           dot:'bg-blue-400' },
+        { id:'with_designer',  label:'With Designer', dot:'bg-purple-400' },
+        { id:'pending_review', label:'Pending Review',dot:'bg-yellow-400' },
+        { id:'ready_to_post',  label:'Ready to Post', dot:'bg-green-400' },
+      ];
+
+      // Contract alerts (only admin/PM)
+      const alertsHTML = (user.role === 'admin' || user.role === 'project_manager') ? `
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-white">Contract Alerts</h2>
+            <span class="text-xs bg-red-500/15 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full">${clients.filter(c=>{const d=daysUntil(c.endDate);return d>=0&&d<=30;}).length} ending soon</span>
+          </div>
+          <div class="space-y-3">
+            ${clients.filter(c=>{const d=daysUntil(c.endDate);return d>=0&&d<=45;}).slice(0,4).map(c=>{
+              const d = daysUntil(c.endDate);
+              const color = d<=14?'bg-red-500':d<=30?'bg-orange-400':'bg-yellow-400';
+              return `<div class="flex items-start gap-3"><span class="w-2 h-2 rounded-full ${color} mt-1.5 flex-shrink-0"></span><div><p class="text-sm font-medium text-white">${c.name}</p><p class="text-xs ${d<=14?'text-red-400':d<=30?'text-orange-400':'text-yellow-400'}">Ends in ${d} days</p></div></div>`;
+            }).join('') || '<p class="text-xs text-gray-600">No contracts ending soon</p>'}
+          </div>
+          <a href="clients.html" class="block mt-4 text-center text-xs text-indigo-400 hover:text-indigo-300">View all clients →</a>
+        </div>
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+          <div class="flex items-center justify-between mb-4"><h2 class="text-sm font-semibold text-white">Designer Queue</h2><span class="text-xs text-gray-500">Faaiz</span></div>
+          <div class="space-y-2">
+            <div class="flex justify-between"><span class="text-xs text-gray-400">Waiting</span><span class="text-sm font-bold text-white">${allTasks.filter(t=>t.status==='with_designer').length} tasks</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-400">Changes needed</span><span class="text-sm font-bold text-red-400">${allTasks.filter(t=>t.status==='changes_requested').length}</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-400">Pending approval</span><span class="text-sm font-bold text-yellow-400">${allTasks.filter(t=>t.status==='pending_review').length}</span></div>
+          </div>
+          <a href="pipeline.html" class="block mt-4 text-center text-xs text-indigo-400 hover:text-indigo-300">View pipeline →</a>
+        </div>` : '';
+
+      // My Clients — visible to every role, scoped by getVisibleClients (admin sees all,
+      // others see clients where they're linked as PM, Executive, or Designer).
+      const myClientsHTML = `
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-sm font-semibold text-white">My Clients</h2>
+            <span class="text-xs bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full">${clients.length}</span>
+          </div>
+          <div class="space-y-2">
+            ${clients.slice(0,5).map(c => `
+              <div class="flex items-center justify-between p-2.5 bg-gray-800 rounded-lg">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-white truncate">${c.name}</p>
+                  <p class="text-xs text-gray-500 capitalize">${c.status || 'active'} &bull; ${getCurrency()} ${(c.budget||0).toLocaleString()}/mo</p>
+                </div>
+              </div>`).join('') || '<p class="text-xs text-gray-600 text-center py-4">No clients assigned to you yet.</p>'}
+          </div>
+          <a href="clients.html" class="block mt-3 text-center text-xs text-indigo-400 hover:text-indigo-300">View all clients →</a>
+        </div>`;
+
+      // Change request tickets (visible to all, filtered by role)
+      const changeTasks = myTasks.filter(t => t.status === 'changes_requested');
+      const changeTicketsHTML = changeTasks.length ? `
+        <div class="bg-gray-900 rounded-xl border border-red-500/30 overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-red-500/20 bg-red-500/5">
+            <div class="flex items-center gap-2">
+              <i class="fa-solid fa-flag text-red-400 text-xs"></i>
+              <h2 class="text-sm font-semibold text-white">Change Requests</h2>
+              <span class="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-medium">${changeTasks.length} open</span>
+            </div>
+            <a href="tasks.html" class="text-xs text-indigo-400 hover:text-indigo-300">View all tasks →</a>
+          </div>
+          <div class="divide-y divide-gray-800">
+            ${changeTasks.map(t => {
+              const changeComments = (t.comments||[]).filter(cm => cm.type === 'change_request' || (!cm.type && t.status === 'changes_requested'));
+              const latestNote = changeComments.length ? changeComments[changeComments.length-1].text : 'No details added';
+              const due = daysUntil(t.dueDate);
+              const dueColor = due < 0 ? 'text-red-400' : due <= 2 ? 'text-orange-400' : 'text-gray-500';
+              return `
+                <div class="flex items-start gap-4 px-5 py-4 hover:bg-gray-800/50 cursor-pointer transition-colors group" onclick="openChangeTicket('${t.id}')">
+                  <div class="w-8 h-8 rounded-lg bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <i class="fa-solid fa-rotate-left text-red-400 text-xs"></i>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-0.5">
+                      <span class="text-sm font-semibold text-white">${t.clientName}</span>
+                      <span class="text-xs text-gray-500">·</span>
+                      <span class="text-xs text-gray-400">${t.contentType} — ${t.title || t.topic || '—'}</span>
+                    </div>
+                    <p class="text-xs text-red-300 truncate"><i class="fa-solid fa-comment-dots mr-1 text-red-500/60"></i>${latestNote}</p>
+                  </div>
+                  <div class="flex items-center gap-3 flex-shrink-0">
+                    <span class="text-xs ${dueColor}">${due < 0 ? Math.abs(due)+'d overdue' : due === 0 ? 'Due today' : 'Due in '+due+'d'}</span>
+                    <i class="fa-solid fa-chevron-right text-gray-600 text-xs group-hover:text-gray-400 transition-colors"></i>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        </div>` : '';
+
+      main.innerHTML = `
+        <div class="grid grid-cols-4 gap-4">${statsHTML}</div>
+        ${changeTicketsHTML}
+
+        <div class="grid grid-cols-3 gap-4">
+          <div class="col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-sm font-semibold text-white">Pipeline Snapshot</h2>
+              <a href="pipeline.html" class="text-xs text-indigo-400 hover:text-indigo-300">View Kanban →</a>
+            </div>
+            <div class="grid grid-cols-4 gap-3 mb-5">
+              ${snapCols.map(c=>`
+                <div class="pipeline-stage">
+                  <div class="flex items-center gap-2 mb-2"><span class="w-2 h-2 rounded-full ${c.dot}"></span><span class="text-xs text-gray-400 font-medium">${c.label}</span></div>
+                  <p class="text-2xl font-bold text-white">${snapTasks.filter(t=>t.status===c.id).length}</p>
+                  <p class="text-xs text-gray-600 mt-1">tasks</p>
+                </div>`).join('')}
+            </div>
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">My Recent Tasks</p>
+            <div class="space-y-2">${taskRows}</div>
+          </div>
+          <div class="space-y-4">${myClientsHTML}${alertsHTML || `
+            <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+              <h2 class="text-sm font-semibold text-white mb-4">Quick Links</h2>
+              <div class="space-y-2">
+                <a href="pipeline.html" class="flex items-center gap-3 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors">
+                  <i class="fa-solid fa-kanban text-indigo-400 text-sm w-5"></i><span class="text-sm text-white">View Pipeline</span>
+                </a>
+                <a href="tasks.html" class="flex items-center gap-3 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors">
+                  <i class="fa-solid fa-list-check text-blue-400 text-sm w-5"></i><span class="text-sm text-white">My Tasks</span>
+                </a>
+                <a href="team.html" class="flex items-center gap-3 p-3 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors">
+                  <i class="fa-solid fa-people-group text-green-400 text-sm w-5"></i><span class="text-sm text-white">Team Overview</span>
+                </a>
+              </div>
+            </div>`}
+          </div>
+        </div>`;
+    }
+  </script>
+</body>
+</html>

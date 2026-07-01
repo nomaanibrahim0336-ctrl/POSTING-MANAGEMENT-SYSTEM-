@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SMM-MANAGER — Tasks</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/style.css"/>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans">
+  <div id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-gray-900 border-r border-gray-800 flex flex-col z-50"></div>
+
+  <div class="ml-64 min-h-screen flex flex-col">
+    <header class="sticky top-0 z-40 bg-gray-950/80 backdrop-blur border-b border-gray-800 px-8 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">Tasks</h1>
+        <p class="text-xs text-gray-500 mt-0.5">All content tasks across every client</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="relative">
+          <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
+          <input id="taskSearch" type="text" class="search-input" placeholder="Search tasks..." oninput="renderTasks()"/>
+        </div>
+        <select id="statusFilter" class="form-input w-auto text-sm py-2" onchange="renderTasks()">
+          <option value="">All Statuses</option>
+          <option value="new">New</option>
+          <option value="ready_to_designer">Ready to Designer</option>
+          <option value="with_designer">With Designer</option>
+          <option value="pending_review">Pending Review</option>
+          <option value="changes_requested">Changes Requested</option>
+          <option value="ready_to_post">Ready to Post</option>
+          <option value="posted">Posted</option>
+          <option value="on_hold">On Hold</option>
+        </select>
+        <select id="priorityFilter" class="form-input w-auto text-sm py-2" onchange="renderTasks()">
+          <option value="">All Priorities</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select id="assigneeFilter" class="form-input w-auto text-sm py-2" onchange="renderTasks()">
+          <option value="">All Members</option>
+        </select>
+        <button onclick="exportTasksToSheets()" class="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
+          <i class="fa-brands fa-google text-xs"></i> Export to Sheets
+        </button>
+        <div id="newTaskBtnWrap"></div>
+      </div>
+    </header>
+
+    <main class="flex-1 px-8 py-6 space-y-4">
+      <!-- Status tabs -->
+      <div class="flex gap-0 border-b border-gray-800 overflow-x-auto">
+        <button class="tab-btn active" data-status="" onclick="setTab(this,'')">All</button>
+        <button class="tab-btn" data-status="new" onclick="setTab(this,'new')">New</button>
+        <button class="tab-btn" data-status="with_designer" onclick="setTab(this,'with_designer')">With Designer</button>
+        <button class="tab-btn" data-status="pending_review" onclick="setTab(this,'pending_review')">Pending Review</button>
+        <button class="tab-btn" data-status="changes_requested" onclick="setTab(this,'changes_requested')">Changes</button>
+        <button class="tab-btn" data-status="ready_to_post" onclick="setTab(this,'ready_to_post')">Ready to Post</button>
+        <button class="tab-btn" data-status="posted" onclick="setTab(this,'posted')">Posted</button>
+      </div>
+
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Type</th>
+              <th>Topic</th>
+              <th>Platform</th>
+              <th>Priority</th>
+              <th>Status</th>
+              <th>SMC #</th>
+              <th>Due Date</th>
+              <th>Sched. Till</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="tasksTableBody"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <!-- TASK DETAIL MODAL -->
+  <div id="taskDetailModal" class="modal-overlay" onclick="if(event.target===this)closeDetail()">
+    <div class="modal-box" style="max-width:620px">
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+        <h2 class="text-base font-semibold text-white" id="detailTitle">Task Details</h2>
+        <button onclick="closeDetail()" class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-6" id="detailBody"></div>
+    </div>
+  </div>
+
+  <!-- NEW TASK MODAL -->
+  <div id="newTaskModal" class="modal-overlay" onclick="if(event.target===this)closeNewTask()">
+    <div class="modal-box">
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+        <h2 class="text-base font-semibold text-white">New Content Task</h2>
+        <button onclick="closeNewTask()" class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="form-label">Client *</label>
+          <select id="ntClient" class="form-input" onchange="onNTClientSelect()"><option value="">Select Client</option></select>
+        </div>
+        <div id="ntClientBanner" class="hidden bg-indigo-500/10 border border-indigo-500/20 rounded-lg p-3">
+          <p class="text-xs text-indigo-300" id="ntClientInfo"></p>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="form-label">Content Type *</label>
+            <select id="ntType" class="form-input">
+              <option value="carousel">Carousel</option><option value="video">Video Post</option>
+              <option value="stories">Story Pack</option><option value="reels">Reels</option><option value="post">Single Post</option>
+            </select>
+          </div>
+          <div><label class="form-label">Platform</label>
+            <select id="ntPlatform" class="form-input">
+              <option value="instagram">Instagram</option><option value="facebook">Facebook</option><option value="both">Both</option>
+            </select>
+          </div>
+        </div>
+        <div><label class="form-label">Topic / Title *</label><input id="ntTopic" type="text" class="form-input" placeholder="e.g. Summer Collection Launch"/></div>
+        <div><label class="form-label">Content Brief</label><textarea id="ntBrief" class="form-input" rows="2" placeholder="Describe the content..."></textarea></div>
+        <div><label class="form-label">Special Instructions</label><textarea id="ntInstructions" class="form-input" rows="2" placeholder="Notes for creator/designer..."></textarea></div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="form-label">Due Date *</label><input id="ntDue" type="date" class="form-input"/></div>
+          <div><label class="form-label">Priority</label>
+            <select id="ntPriority" class="form-input">
+              <option value="high">🔴 High</option><option value="medium" selected>🟡 Medium</option><option value="low">🟢 Low</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div><label class="form-label">Assigned Executive</label>
+            <select id="ntAssignee" class="form-input"></select>
+          </div>
+          <div><label class="form-label">Assigned Designer</label>
+            <select id="ntDesigner" class="form-input"></select>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-gray-800">
+        <button onclick="closeNewTask()" class="btn-secondary">Cancel</button>
+        <button onclick="createTask()" class="btn-primary">Create Task</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/app.js"></script>
+  <script>
+    const PRIORITY_COLORS = { high:'text-red-400', medium:'text-yellow-400', low:'text-green-400' };
+    const TYPE_ICONS = { carousel:'fa-table-cells', video:'fa-film', stories:'fa-mobile-screen', reels:'fa-clapperboard', post:'fa-image' };
+    let activeTab = '';
+
+    const DEFAULT_TASK_STAGES = [
+      {id:'new',label:'New'},{id:'ready_to_designer',label:'Ready to Designer'},
+      {id:'with_designer',label:'With Designer'},{id:'pending_review',label:'Pending Review'},
+      {id:'changes_requested',label:'Changes Requested'},{id:'additional_content',label:'Additional Content'},
+      {id:'ready_to_post',label:'Ready to Post'},{id:'posted',label:'Posted'},{id:'on_hold',label:'On Hold'},
+    ];
+
+    // Reads Admin Panel > Pipeline Stages (smm_pipeline_stages) so any stage added/edited
+    // there shows up here too. Falls back to defaults if admin hasn't customized stages.
+    function getPipelineStages() {
+      try {
+        const saved = localStorage.getItem('smm_pipeline_stages');
+        if (!saved) return DEFAULT_TASK_STAGES;
+        const stages = JSON.parse(saved).map(s => ({ id: s.id, label: s.label }));
+        // Always keep "On Hold" available even if not in the admin-managed list
+        if (!stages.find(s => s.id === 'on_hold')) stages.push({ id:'on_hold', label:'On Hold' });
+        return stages;
+      } catch { return DEFAULT_TASK_STAGES; }
+    }
+
+    function populateStatusFilter() {
+      const sel = document.getElementById('statusFilter');
+      const current = sel.value;
+      sel.innerHTML = '<option value="">All Statuses</option>' +
+        getPipelineStages().map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+      sel.value = current;
+    }
+
+    function setTab(el, status) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      el.classList.add('active');
+      activeTab = status;
+      document.getElementById('statusFilter').value = status;
+      renderTasks();
+    }
+
+    function renderTasks(baseTasks) {
+      const search    = document.getElementById('taskSearch').value.toLowerCase();
+      const statusF   = document.getElementById('statusFilter').value;
+      const priorityF = document.getElementById('priorityFilter').value;
+      const assigneeF = document.getElementById('assigneeFilter').value;
+      // Always recompute against the live APP.tasks so local actions (create/edit/move/delete)
+      // show up immediately instead of waiting for the next background sync.
+      if (!baseTasks) window._visibleTasks = getVisibleTasks(APP.tasks, APP.currentUser);
+      const source = baseTasks || window._visibleTasks;
+      let list = source.filter(t => {
+        const ms = !statusF   || t.status === statusF;
+        const mp = !priorityF || t.priority === priorityF;
+        const ma = !assigneeF || t.assignedTo === assigneeF || t.designer === assigneeF;
+        const mq = !search    || t.clientName.toLowerCase().includes(search) || t.topic.toLowerCase().includes(search);
+        return ms && mp && ma && mq;
+      });
+      list.sort((a,b) => new Date(a.dueDate) - new Date(b.dueDate));
+      const tbody = document.getElementById('tasksTableBody');
+      if (!list.length) { tbody.innerHTML = `<tr><td colspan="10" class="text-center py-12 text-gray-600">No tasks found</td></tr>`; return; }
+      const STAGES = { new:'New',ready_to_designer:'Ready to Designer',with_designer:'With Designer',pending_review:'Pending Review',changes_requested:'Changes Requested',additional_content:'Additional Content',ready_to_post:'Ready to Post',posted:'Posted',on_hold:'On Hold' };
+      tbody.innerHTML = list.map(t => {
+        const due = daysUntil(t.dueDate);
+        const dueClass = due < 0 ? 'text-red-400 font-semibold' : due === 0 ? 'text-orange-400 font-semibold' : due <= 2 ? 'text-yellow-400' : 'text-gray-400';
+        return `
+          <tr class="cursor-pointer" onclick="viewTask('${t.id}')">
+            <td><span class="font-medium text-white">${t.clientName}</span></td>
+            <td><div class="flex items-center gap-1.5"><i class="fa-solid ${TYPE_ICONS[t.contentType]||'fa-file'} text-gray-500 text-xs"></i><span class="capitalize">${t.contentType}</span></div></td>
+            <td class="max-w-xs truncate">${t.topic}</td>
+            <td class="capitalize">${t.platform}</td>
+            <td><span class="${PRIORITY_COLORS[t.priority]} capitalize font-medium text-sm">${t.priority}</span></td>
+            <td>${statusBadge(t.status)}</td>
+            <td>${t.smcNumber ? `<span class="status-badge bg-emerald-500/15 text-emerald-400 border-emerald-500/30">SMC #${t.smcNumber}</span>${t.smcMonth ? `<div class="text-xs text-gray-500 mt-0.5">${t.smcMonth}</div>` : ''}` : '<span class="text-gray-600">—</span>'}</td>
+            <td><span class="${dueClass}">${formatDate(t.dueDate)}</span></td>
+            <td>${t.scheduledTill ? `<div class="flex flex-col gap-1"><span class="text-xs text-gray-400">${formatDate(t.scheduledTill)}</span>${getSchedAlertBadge(t.scheduledTill)}</div>` : '<span class="text-gray-600">—</span>'}</td>
+            <td class="text-gray-500">${formatDate(t.createdDate)}</td>
+            <td onclick="event.stopPropagation()">
+              <div class="flex gap-2">
+                <button onclick="viewTask('${t.id}')" class="text-gray-500 hover:text-indigo-400 p-1 transition-colors"><i class="fa-solid fa-eye text-xs"></i></button>
+                <button onclick="deleteTask('${t.id}')" class="text-gray-500 hover:text-red-400 p-1 transition-colors"><i class="fa-solid fa-trash text-xs"></i></button>
+              </div>
+            </td>
+          </tr>`;
+      }).join('');
+    }
+
+    function viewTask(id) {
+      const t = APP.tasks.find(t => t.id === id);
+      if (!t) return;
+      const COLUMNS = getPipelineStages();
+      const due = daysUntil(t.dueDate);
+      const dueColor = due < 0 ? 'text-red-400' : due === 0 ? 'text-orange-400' : due <= 2 ? 'text-yellow-400' : 'text-white';
+      document.getElementById('detailTitle').textContent = `${t.clientName} — ${t.topic}`;
+      document.getElementById('detailBody').innerHTML = `
+        <div class="space-y-4">
+          ${t.status === 'changes_requested' ? `
+          <div class="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/30 rounded-xl">
+            <i class="fa-solid fa-flag text-red-400"></i>
+            <div class="flex-1">
+              <p class="text-sm font-semibold text-red-400">Changes Requested</p>
+              <p class="text-xs text-gray-400 mt-0.5">${(t.comments||[]).filter(c=>c.type==='change_request').slice(-1)[0]?.text || 'See comments below'}</p>
+            </div>
+            <button onclick="resolveChanges('${t.id}')" class="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors">
+              <i class="fa-solid fa-check"></i> Mark Resolved
+            </button>
+          </div>` : ''}
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-gray-800 rounded-xl p-4 space-y-2">
+              <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-2">Details</p>
+              <div class="flex justify-between"><span class="text-xs text-gray-500">Status</span>${statusBadge(t.status)}</div>
+              <div class="flex justify-between"><span class="text-xs text-gray-500">Priority</span><span class="text-sm ${PRIORITY_COLORS[t.priority]} capitalize font-medium">${t.priority}</span></div>
+              <div class="flex justify-between"><span class="text-xs text-gray-500">Type</span><span class="text-sm text-white capitalize">${t.contentType}</span></div>
+              <div class="flex justify-between"><span class="text-xs text-gray-500">Platform</span><span class="text-sm text-white capitalize">${t.platform}</span></div>
+              <div class="flex justify-between"><span class="text-xs text-gray-500">Due</span><span class="text-sm ${dueColor} font-medium">${formatDate(t.dueDate)}${due < 0 ? ' (overdue)' : due === 0 ? ' (today)' : ''}</span></div>
+            </div>
+            <div class="bg-gray-800 rounded-xl p-4 space-y-2">
+              <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-2">Team</p>
+              <div class="flex justify-between"><span class="text-xs text-gray-500">Executive</span><span class="text-sm text-blue-400">${t.assignedTo||'—'}</span></div>
+              <div class="flex justify-between"><span class="text-xs text-gray-500">Designer</span><span class="text-sm text-pink-400">${t.designer||'—'}</span></div>
+              <div class="flex justify-between"><span class="text-xs text-gray-500">Created by</span><span class="text-sm text-white">${t.createdBy}</span></div>
+              ${t.postedDate ? `<div class="flex justify-between"><span class="text-xs text-gray-500">Posted</span><span class="text-sm text-green-400 font-medium">${formatDate(t.postedDate)}</span></div>` : ''}
+              ${t.scheduledTill ? `<div class="flex justify-between"><span class="text-xs text-gray-500">Scheduled Till</span><span class="text-sm text-yellow-400">${formatDate(t.scheduledTill)}</span></div>` : ''}
+              ${t.postedNote ? `<div class="flex justify-between"><span class="text-xs text-gray-500">Post Note</span><span class="text-sm text-gray-300">${t.postedNote}</span></div>` : ''}
+            </div>
+          </div>
+          <!-- Inline edit bar -->
+          <div class="bg-gray-800/60 border border-gray-700 rounded-xl p-4">
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Quick Edit</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="form-label text-xs">Due Date</label>
+                <input id="editDue" type="date" class="form-input text-sm py-1.5" value="${t.dueDate||''}"/>
+              </div>
+              <div>
+                <label class="form-label text-xs">Priority</label>
+                <select id="editPriority" class="form-input text-sm py-1.5">
+                  <option value="high" ${t.priority==='high'?'selected':''}>🔴 High</option>
+                  <option value="medium" ${t.priority==='medium'?'selected':''}>🟡 Medium</option>
+                  <option value="low" ${t.priority==='low'?'selected':''}>🟢 Low</option>
+                </select>
+              </div>
+              <div>
+                <label class="form-label text-xs">Assigned Executive</label>
+                <select id="editAssignee" class="form-input text-sm py-1.5">
+                  <option value="">— None —</option>
+                  ${APP.team.filter(m=>m.role==='creator'||m.role==='project_manager').map(m=>`<option value="${m.name}" ${t.assignedTo===m.name?'selected':''}>${m.name}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="form-label text-xs">Assigned Designer</label>
+                <select id="editDesigner" class="form-input text-sm py-1.5">
+                  <option value="">— None —</option>
+                  ${APP.team.filter(m=>m.role==='designer').map(m=>`<option value="${m.name}" ${t.designer===m.name?'selected':''}>${m.name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <button onclick="saveTaskEdit('${t.id}')" class="btn-primary text-sm mt-3 w-full">Save Changes</button>
+          </div>
+          ${t.brief ? `<div class="bg-gray-800 rounded-xl p-4"><p class="text-xs text-gray-500 mb-1">Brief</p><p class="text-sm text-gray-300">${t.brief}</p></div>` : ''}
+          ${t.instructions ? `<div class="bg-gray-800 rounded-xl p-4"><p class="text-xs text-gray-500 mb-1">Instructions</p><p class="text-sm text-gray-300">${t.instructions}</p></div>` : ''}
+          <div class="bg-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Move to Stage</p>
+            <div class="flex flex-wrap gap-2">
+              ${COLUMNS.filter(c=>c.id!==t.status).map(c=>`<button onclick="moveTask('${t.id}','${c.id}')" class="text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded-lg transition-colors">${c.label}</button>`).join('')}
+            </div>
+          </div>
+          <div class="bg-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Activity Log</p>
+            <div class="space-y-0">
+              ${(t.timeline||[]).map(e=>`
+                <div class="timeline-item">
+                  <div class="timeline-dot bg-indigo-500/20 text-indigo-400"><i class="fa-solid fa-circle-dot text-xs"></i></div>
+                  <div><p class="text-sm text-white">${e.action}</p><p class="text-xs text-gray-500">${e.by} · ${formatDate(e.date)}</p></div>
+                </div>`).join('')}
+            </div>
+          </div>
+          <div class="bg-gray-800 rounded-xl p-4">
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Comments</p>
+            <div class="space-y-2 mb-3">
+              ${(t.comments||[]).map(c=>`
+                <div class="flex gap-3">
+                  <div class="avatar bg-indigo-700 text-xs">${c.by[0]}</div>
+                  <div class="flex-1 bg-gray-700 rounded-lg px-3 py-2">
+                    <p class="text-xs font-semibold text-white">${c.by}</p>
+                    <p class="text-sm text-gray-300 mt-0.5">${c.text}</p>
+                    <p class="text-xs text-gray-600 mt-1">${formatDate(c.date)}</p>
+                  </div>
+                </div>`).join('')}
+              ${!t.comments?.length ? `<p class="text-xs text-gray-600">No comments yet</p>` : ''}
+            </div>
+            <div class="flex gap-2">
+              <input id="commentInput" type="text" class="form-input flex-1 text-sm py-2" placeholder="Add a comment..."/>
+              <button onclick="addComment('${t.id}')" class="btn-primary px-4 py-2 text-sm">Post</button>
+            </div>
+          </div>
+        </div>`;
+      document.getElementById('taskDetailModal').classList.add('open');
+    }
+
+    function moveTask(id, status) {
+      if (status === 'posted') {
+        showPostedDateModal(id, (date, scheduledTill, note, smcMonth, smcNumber) => {
+          const all = APP.tasks; const t = all.find(t => t.id === id); if (!t) return;
+          t.status = 'posted'; t.postedDate = date; t.scheduledTill = scheduledTill; t.postedNote = note;
+          t.smcMonth = smcMonth; t.smcNumber = smcNumber;
+          t.timeline = t.timeline || [];
+          const smcLabel = smcNumber ? ` — SMC #${smcNumber} (${smcMonth})` : '';
+          const label = `Posted on ${formatDate(date)}` + (scheduledTill ? ` — Scheduled till: ${formatDate(scheduledTill)}` : '') + smcLabel;
+          t.timeline.push({ action: label + (note ? ` — ${note}` : ''), by: APP.currentUser?.name||'You', date });
+          APP.tasks = all;
+          apiUpdateTask(id, { status:'posted', posted_date: date, scheduled_till: scheduledTill, timeline_action: label + (note ? ` — ${note}` : '') });
+          bumpClientPostCount(t.clientId, smcNumber, smcMonth);
+          renderTasks(); closeDetail(); showToast('Task marked as Posted!' + (smcNumber ? ` SMC #${smcNumber} recorded.` : ''));
+        });
+        return;
+      }
+
+      if (status === 'changes_requested') {
+        showChangesModal(id, () => {
+          const all = APP.tasks; const t = all.find(t => t.id === id);
+          if (t) { t.status = 'changes_requested'; APP.tasks = all; }
+          renderTasks(); closeDetail();
+        });
+        return;
+      }
+
+      const all = APP.tasks; const t = all.find(t => t.id === id); if (!t) return;
+      t.status = status; t.timeline = t.timeline || [];
+      const moveLabel = `Moved to ${status.replace(/_/g,' ')}`;
+      t.timeline.push({ action: moveLabel, by: APP.currentUser?.name||'You', date: new Date().toISOString().split('T')[0] });
+      APP.tasks = all;
+      apiUpdateTask(id, { status, timeline_action: moveLabel }); renderTasks(); closeDetail();
+    }
+
+    function addComment(taskId) {
+      const input = document.getElementById('commentInput');
+      const text = input.value.trim();
+      if (!text) return;
+      const all = APP.tasks; const t = all.find(t => t.id === taskId); if (!t) return;
+      t.comments = t.comments || [];
+      t.comments.push({ by: APP.currentUser?.name||'You', text, date: new Date().toISOString().split('T')[0] });
+      APP.tasks = all; input.value = ''; viewTask(taskId);
+    }
+
+    function showChangesModal(taskId, onDone) {
+      const existing = document.getElementById('changesModal');
+      if (existing) existing.remove();
+      const modal = document.createElement('div');
+      modal.id = 'changesModal';
+      modal.className = 'modal-overlay open';
+      modal.innerHTML = `
+        <div class="modal-box" style="max-width:460px">
+          <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+            <div>
+              <h2 class="text-base font-semibold text-white">Request Changes</h2>
+              <p class="text-xs text-gray-500 mt-0.5">Describe what needs to be changed</p>
+            </div>
+            <button onclick="document.getElementById('changesModal').remove()" class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-xmark text-lg"></i></button>
+          </div>
+          <div class="p-6 space-y-4">
+            <textarea id="changesNote" class="form-input" rows="4" placeholder="e.g. Change the audio, adjust colours, redo the caption..."></textarea>
+            <div class="flex gap-3 justify-end">
+              <button onclick="document.getElementById('changesModal').remove()" class="btn-secondary text-sm">Cancel</button>
+              <button onclick="confirmChanges('${taskId}')" class="btn-primary text-sm"><i class="fa-solid fa-flag mr-2 text-xs"></i>Request Changes</button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.querySelector('#changesNote').focus();
+      window._changesCallback = onDone;
+    }
+
+    function confirmChanges(taskId) {
+      const note = document.getElementById('changesNote').value.trim();
+      if (!note) { showToast('Please describe what needs to change.', 'error'); return; }
+      const t = APP.tasks.find(t => t.id === taskId);
+      if (!t) return;
+      const today = new Date().toISOString().split('T')[0];
+      const user = APP.currentUser;
+      t.status = 'changes_requested';
+      t.comments = t.comments || [];
+      t.comments.push({ by: user ? user.name : 'You', text: note, date: today, type: 'change_request' });
+      t.timeline = t.timeline || [];
+      t.timeline.push({ action: `Changes requested: "${note}"`, by: user ? user.name : 'You', date: today });
+      apiUpdateTask(t.id, { status:'changes_requested', changes_requested: true, change_note: note, timeline_action: `Changes requested: "${note}"` });
+      document.getElementById('changesModal').remove();
+      if (window._changesCallback) window._changesCallback();
+      showToast('Changes requested and logged.');
+    }
+
+    function saveTaskEdit(id) {
+      const all = APP.tasks; const t = all.find(t => t.id === id); if (!t) return;
+      const today = new Date().toISOString().split('T')[0];
+      const changes = [];
+      const newDue      = document.getElementById('editDue').value;
+      const newPriority = document.getElementById('editPriority').value;
+      const newAssignee = document.getElementById('editAssignee').value;
+      const newDesigner = document.getElementById('editDesigner').value;
+      if (newDue      !== t.dueDate)         changes.push(`Due date → ${formatDate(newDue)}`);
+      if (newPriority !== t.priority)        changes.push(`Priority → ${newPriority}`);
+      if (newAssignee !== (t.assignedTo||'')) changes.push(`Executive → ${newAssignee||'None'}`);
+      if (newDesigner !== (t.designer||''))   changes.push(`Designer → ${newDesigner||'None'}`);
+      if (!changes.length) { showToast('No changes made.'); return; }
+      t.dueDate = newDue; t.priority = newPriority; t.assignedTo = newAssignee; t.designer = newDesigner;
+      t.timeline = t.timeline || [];
+      t.timeline.push({ action: `Edited: ${changes.join(', ')}`, by: APP.currentUser?.name||'You', date: today });
+      APP.tasks = all;
+      apiUpdateTask(id, { due_date: newDue, priority: newPriority, assigned_to: newAssignee, designer: newDesigner, timeline_action: `Edited: ${changes.join(', ')}` });
+      renderTasks(); viewTask(id); showToast('Task updated.');
+    }
+
+    function resolveChanges(id) {
+      const all = APP.tasks; const t = all.find(t => t.id === id); if (!t) return;
+      const today = new Date().toISOString().split('T')[0];
+      t.status = 'with_designer'; t.timeline = t.timeline || [];
+      t.timeline.push({ action: 'Changes resolved — moved back to With Designer', by: APP.currentUser?.name||'You', date: today });
+      APP.tasks = all;
+      apiUpdateTask(id, { status:'with_designer', changes_requested: false, timeline_action:'Changes resolved — moved back to With Designer' });
+      renderTasks(); viewTask(id); showToast('Change request resolved.');
+    }
+
+    function deleteTask(id) {
+      if (!confirm('Delete this task?')) return;
+      APP.tasks = APP.tasks.filter(t => t.id !== id);
+      apiDeleteTask(id); renderTasks();
+    }
+
+    function closeDetail() { document.getElementById('taskDetailModal').classList.remove('open'); }
+
+    function openNewTaskModal() {
+      const user = APP.currentUser;
+      const sel = document.getElementById('ntClient');
+      sel.innerHTML = '<option value="">Select Client</option>';
+      APP.clients.forEach(c => sel.innerHTML += `<option value="${c.id}">${c.name}</option>`);
+
+      // Populate assignee dropdown — executives can only assign to themselves
+      const isExec = user && user.role === 'creator';
+      const execOptions = isExec
+        ? [user]
+        : APP.team.filter(m => m.role === 'creator' || m.role === 'project_manager');
+      const assigneeSel = document.getElementById('ntAssignee');
+      assigneeSel.innerHTML = '<option value="">— None —</option>' +
+        execOptions.map(m => `<option value="${m.name}"${isExec ? ' selected' : ''}>${m.name}</option>`).join('');
+
+      // Populate designer dropdown — only designers allowed
+      const designers = APP.team.filter(m => m.role === 'designer');
+      document.getElementById('ntDesigner').innerHTML =
+        '<option value="">— None —</option>' +
+        designers.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+
+      document.getElementById('newTaskModal').classList.add('open');
+    }
+    function closeNewTask() { document.getElementById('newTaskModal').classList.remove('open'); }
+
+    function onNTClientSelect() {
+      const c = APP.clients.find(c => c.id === document.getElementById('ntClient').value);
+      const banner = document.getElementById('ntClientBanner');
+      if (c) {
+        banner.classList.remove('hidden');
+        const parts = [`Lead: ${c.pm||'—'}`, `Executive: ${c.executive||'—'}`, `Designer: ${c.designer||'—'}`, `Budget: ${getCurrency()} ${(c.budget||0).toLocaleString()}`, `Ends: ${formatDate(c.endDate)}`];
+        document.getElementById('ntClientInfo').textContent = parts.join(' · ');
+      } else {
+        banner.classList.add('hidden');
+      }
+    }
+
+    function createTask() {
+      const clientId = document.getElementById('ntClient').value;
+      const client = APP.clients.find(c => c.id === clientId);
+      const topic = document.getElementById('ntTopic').value.trim();
+      const due = document.getElementById('ntDue').value;
+      const user = APP.currentUser;
+      if (!clientId) { showToast('Please select a client.', 'error'); return; }
+      APP.tasks.push({
+        id: 't' + Date.now(), clientId, clientName: client.name,
+        contentType: document.getElementById('ntType').value,
+        platform: document.getElementById('ntPlatform').value,
+        topic, brief: document.getElementById('ntBrief').value.trim(),
+        instructions: document.getElementById('ntInstructions').value.trim(),
+        dueDate: due, priority: document.getElementById('ntPriority').value,
+        status: 'new',
+        createdBy: user ? user.name : 'You',
+        assignedTo: document.getElementById('ntAssignee').value || client.executive || client.pm || '',
+        designer: document.getElementById('ntDesigner').value || client.designer || '',
+        createdDate: new Date().toISOString().split('T')[0], comments: [],
+        timeline: [{ action: 'Task created', by: user ? user.name : 'You', date: new Date().toISOString().split('T')[0] }],
+      });
+      const newTask = APP.tasks[APP.tasks.length - 1];
+      saveData(); apiSaveTask(newTask); renderTasks(); closeNewTask();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const user = pageInit();
+      if (!user) return;
+      if (can('create_task', user)) {
+        document.getElementById('newTaskBtnWrap').innerHTML = `
+          <button onclick="openNewTaskModal()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            <i class="fa-solid fa-plus text-xs"></i> New Task
+          </button>`;
+      }
+      // Populate assignee filter from team
+      const sel = document.getElementById('assigneeFilter');
+      APP.team.filter(m => m.role !== 'admin').forEach(m => {
+        sel.innerHTML += `<option value="${m.name}">${m.name}</option>`;
+      });
+      populateStatusFilter();
+      window._visibleTasks = getVisibleTasks(APP.tasks, user);
+      renderTasks();
+      if (APP.useAPI) syncFromAPI().then(() => { window._visibleTasks = getVisibleTasks(APP.tasks, user); renderTasks(); });
+      document.addEventListener('smm:synced', () => { window._visibleTasks = getVisibleTasks(APP.tasks, user); renderTasks(); });
+    });
+
+    const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzdDEkv-fgVvsQ6WXhH1MRkIlubZzp17YCVdNBAQ_3Gr6JVYCOuPEq9t82LxS9No3ry/exec';
+
+    async function exportTasksToSheets() {
+      const btn = event.currentTarget;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2 text-xs"></i>Exporting…';
+      try {
+        const rows = APP.tasks.map(t => ({
+          Client:      t.clientName  || '',
+          Title:       t.title || t.topic || '',
+          Platform:    t.platform    || '',
+          Type:        t.contentType || '',
+          Status:      t.status      || '',
+          Priority:    t.priority    || '',
+          Executive:   t.assignedTo  || '',
+          Designer:    t.designer    || '',
+          CreatedBy:   t.createdBy   || '',
+          DueDate:     t.dueDate     || '',
+          PostedDate:  t.postedDate  || '',
+          ScheduledTill: t.scheduledTill || '',
+          Brief:       t.brief       || ''
+        }));
+        await fetch(SHEETS_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: JSON.stringify({ sheet: 'Tasks', rows })
+        });
+        showToast('Tasks exported to Google Sheets ✓');
+      } catch(err) {
+        showToast('Export failed — ' + err.message, 'error');
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-brands fa-google mr-2 text-xs"></i>Export to Sheets';
+    }
+  </script>
+</body>
+</html>

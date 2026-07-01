@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SMM-MANAGER — Clients</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/style.css"/>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans">
+
+  <div id="sidebar" class="fixed top-0 left-0 h-full w-64 bg-gray-900 border-r border-gray-800 flex flex-col z-50"></div>
+
+  <!-- MAIN -->
+  <div class="ml-64 min-h-screen flex flex-col">
+    <header class="sticky top-0 z-40 bg-gray-950/80 backdrop-blur border-b border-gray-800 px-8 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-white">Clients</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Manage client contracts, budgets & tenure</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="relative">
+          <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
+          <input id="clientSearch" type="text" class="search-input" placeholder="Search clients..." oninput="renderClients()"/>
+        </div>
+        <select id="statusFilter" class="form-input w-auto text-sm py-2" onchange="renderClients()">
+          <option value="">All Status</option>
+          <option value="active">Active</option>
+          <option value="ending_soon">Ending Soon</option>
+          <option value="paused">Paused</option>
+        </select>
+        <div id="bulkAssignBtn"></div>
+        <div id="exportSheetsBtn"></div>
+        <div id="pullIntakeBtn"></div>
+        <div id="addClientBtn"></div>
+      </div>
+    </header>
+
+    <main class="flex-1 px-8 py-6 space-y-6">
+
+      <!-- INTAKE STAGING AREA (hidden when empty) -->
+      <div id="intakeStagingWrap" class="hidden">
+        <div class="bg-gray-900 border border-yellow-500/30 rounded-xl overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-4 bg-yellow-500/5 cursor-pointer select-none" onclick="toggleIntake()">
+            <div class="flex items-center gap-3">
+              <div class="w-7 h-7 rounded-lg bg-yellow-500/20 flex items-center justify-center">
+                <i class="fa-solid fa-inbox text-yellow-400 text-xs"></i>
+              </div>
+              <div>
+                <h2 class="text-sm font-semibold text-white">Intake Queue</h2>
+                <p class="text-xs text-gray-500">Pulled from SMM-INTAKE sheet — review and activate to go live</p>
+              </div>
+              <span id="intakeCount" class="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded-full font-medium">0 pending</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <div id="activateAllBtn" class="inline" onclick="event.stopPropagation()"></div>
+              <button onclick="event.stopPropagation(); clearIntake()" class="text-xs text-gray-500 hover:text-red-400 transition-colors">
+                <i class="fa-solid fa-trash mr-1"></i>Clear all
+              </button>
+              <i id="intakeChevron" class="fa-solid fa-chevron-down text-gray-500 text-xs transition-transform duration-200"></i>
+            </div>
+          </div>
+          <div id="intakeList" class="divide-y divide-gray-800 hidden"></div>
+        </div>
+      </div>
+
+      <!-- OVERALL STATS -->
+      <div class="grid grid-cols-4 gap-4" id="clientStats"></div>
+
+      <!-- MEMBER TABS -->
+      <div class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+        <div class="flex items-center gap-0 border-b border-gray-800 px-4 overflow-x-auto" id="memberTabs"></div>
+        <div id="memberTabContent" class="p-0"></div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ADD/EDIT CLIENT MODAL -->
+  <div id="clientModal" class="modal-overlay" onclick="if(event.target===this)closeClientModal()">
+    <div class="modal-box">
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+        <h2 class="text-base font-semibold text-white" id="clientModalTitle">Add New Client</h2>
+        <button onclick="closeClientModal()" class="text-gray-500 hover:text-gray-300 transition-colors">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <div class="p-6 space-y-4">
+        <input type="hidden" id="clientId"/>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Client Name *</label>
+            <input id="clientName" type="text" class="form-input" placeholder="Full name"/>
+          </div>
+          <div>
+            <label class="form-label">Team Lead</label>
+            <select id="clientPM" class="form-input">
+              <option value="">Select Team Lead</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Assigned Executive</label>
+            <select id="clientExecutive" class="form-input">
+              <option value="">Select Executive</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Assigned Designer</label>
+            <select id="clientDesigner" class="form-input" onchange="onDesignerChange()">
+              <option value="">Select Designer</option>
+              <option value="__custom__">+ Custom (type name)</option>
+            </select>
+            <input id="clientDesignerCustom" type="text" class="form-input mt-2 hidden" placeholder="Enter designer name"/>
+          </div>
+        </div>
+        <!-- Tenure selector -->
+        <div>
+          <label class="form-label">Tenure (Months)</label>
+          <div class="flex flex-wrap gap-2 mt-1" id="tenureBtns">
+            <button type="button" onclick="selectTenure(1)"  class="tenure-pill" data-val="1">1 mo</button>
+            <button type="button" onclick="selectTenure(2)"  class="tenure-pill" data-val="2">2 mo</button>
+            <button type="button" onclick="selectTenure(3)"  class="tenure-pill" data-val="3">3 mo</button>
+            <button type="button" onclick="selectTenure(6)"  class="tenure-pill" data-val="6">6 mo</button>
+            <button type="button" onclick="selectTenure(12)" class="tenure-pill" data-val="12">12 mo</button>
+            <button type="button" onclick="selectTenure('custom')" class="tenure-pill" data-val="custom">Custom</button>
+          </div>
+          <div id="customTenureWrap" class="hidden mt-2 flex items-center gap-2">
+            <input id="customTenureInput" type="number" min="1" max="60" class="form-input w-28" placeholder="e.g. 9" oninput="onCustomTenure()"/>
+            <span class="text-sm text-gray-400">months</span>
+          </div>
+          <input type="hidden" id="clientTenure" value="3"/>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="form-label">Contract Start</label>
+            <input id="clientStart" type="date" class="form-input" oninput="autoCalcEnd()"/>
+          </div>
+          <div>
+            <label class="form-label">Contract End <span class="text-gray-600 font-normal">(auto or custom)</span></label>
+            <input id="clientEnd" type="date" class="form-input"/>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Monthly Budget (PKR)</label>
+          <input id="clientBudget" type="number" class="form-input" placeholder="e.g. 50000"/>
+        </div>
+        <div>
+          <label class="form-label">Content Types</label>
+          <div class="flex flex-wrap gap-2 mt-1">
+            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" value="carousel" class="content-type-check accent-indigo-500"/> Carousel</label>
+            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" value="video" class="content-type-check accent-indigo-500"/> Video</label>
+            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" value="stories" class="content-type-check accent-indigo-500"/> Stories</label>
+            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" value="reels" class="content-type-check accent-indigo-500"/> Reels</label>
+            <label class="flex items-center gap-1.5 text-sm text-gray-300 cursor-pointer"><input type="checkbox" value="post" class="content-type-check accent-indigo-500"/> Single Post</label>
+          </div>
+        </div>
+        <div>
+          <label class="form-label">Notes</label>
+          <textarea id="clientNotes" class="form-input" rows="2" placeholder="Special instructions, preferences..."></textarea>
+        </div>
+        <div>
+          <label class="form-label">Status</label>
+          <select id="clientStatus" class="form-input">
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+          </select>
+        </div>
+
+        <!-- CLIENT PHASE & PIPELINE ENTRY -->
+        <div class="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-4 space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <i class="fa-solid fa-diagram-project text-indigo-400 text-xs"></i>
+            <p class="text-xs font-semibold text-indigo-300 uppercase tracking-wider">Pipeline Setup</p>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="form-label">Client Phase</label>
+              <select id="clientPhase" class="form-input">
+                <option value="new">🆕 New Client</option>
+                <option value="mid">⚙️ Mid-Operation</option>
+                <option value="ongoing">✅ Ongoing / Existing</option>
+              </select>
+              <p class="text-xs text-gray-600 mt-1">Where is this client right now?</p>
+            </div>
+            <div>
+              <label class="form-label">Pipeline Entry Point</label>
+              <select id="clientPipelineStage" class="form-input">
+                <option value="new">📥 New (Start Fresh)</option>
+                <option value="ready_to_designer">🎨 Ready to Designer</option>
+                <option value="with_designer">🖌️ With Designer</option>
+                <option value="pending_review">👁️ Pending Review</option>
+                <option value="changes_requested">🔄 Changes Requested</option>
+                <option value="ready_to_post">📤 Ready to Post</option>
+                <option value="posted">✅ Already Posted</option>
+              </select>
+              <p class="text-xs text-gray-600 mt-1">Which stage to enter pipeline?</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-gray-800">
+        <button onclick="closeClientModal()" class="btn-secondary">Cancel</button>
+        <button onclick="saveClient()" class="btn-primary">Save Client</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- BULK ASSIGN PM MODAL -->
+  <div id="bulkAssignModal" class="modal-overlay" onclick="if(event.target===this)closeBulkAssignModal()">
+    <div class="modal-box" style="max-width:440px">
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+        <div>
+          <h2 class="text-base font-semibold text-white">Bulk Assign PM</h2>
+          <p class="text-xs text-gray-500 mt-0.5">Assign a Team Lead to all clients that currently have no PM</p>
+        </div>
+        <button onclick="closeBulkAssignModal()" class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <div>
+          <label class="form-label">Team Lead / PM</label>
+          <select id="bulkAssignPM" class="form-input"><option value="">Select PM…</option></select>
+        </div>
+        <p id="bulkAssignCount" class="text-xs text-gray-500"></p>
+      </div>
+      <div class="flex justify-end gap-3 px-6 py-4 border-t border-gray-800">
+        <button onclick="closeBulkAssignModal()" class="btn-secondary">Cancel</button>
+        <button onclick="applyBulkAssignPM()" class="btn-primary"><i class="fa-solid fa-check mr-1.5"></i>Assign</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RENEWAL MODAL -->
+  <div id="renewalModal" class="modal-overlay" onclick="if(event.target===this)closeRenewalModal()">
+    <div class="modal-box" style="max-width:440px">
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+        <div>
+          <h2 class="text-base font-semibold text-white">Renew Contract</h2>
+          <p class="text-xs text-gray-500 mt-0.5" id="renewalClientName"></p>
+        </div>
+        <button onclick="closeRenewalModal()" class="text-gray-500 hover:text-gray-300"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+      <div class="p-6 space-y-4">
+        <input type="hidden" id="renewalClientId"/>
+        <div>
+          <label class="form-label">New Start Date</label>
+          <input id="renewalStart" type="date" class="form-input" oninput="calcRenewalEnd()"/>
+        </div>
+        <div>
+          <label class="form-label">Tenure (Months)</label>
+          <div class="flex flex-wrap gap-2" id="renewalTenureBtns">
+            <button type="button" onclick="setRenewalTenure(1)"  class="tenure-pill" data-rv="1">1 mo</button>
+            <button type="button" onclick="setRenewalTenure(2)"  class="tenure-pill" data-rv="2">2 mo</button>
+            <button type="button" onclick="setRenewalTenure(3)"  class="tenure-pill" data-rv="3">3 mo</button>
+            <button type="button" onclick="setRenewalTenure(6)"  class="tenure-pill" data-rv="6">6 mo</button>
+            <button type="button" onclick="setRenewalTenure(12)" class="tenure-pill" data-rv="12">12 mo</button>
+            <button type="button" onclick="setRenewalTenure('custom')" class="tenure-pill" data-rv="custom">Custom</button>
+          </div>
+          <div id="renewalCustomWrap" class="hidden mt-2 flex items-center gap-2">
+            <input id="renewalCustomInput" type="number" min="1" max="60" class="form-input w-28" placeholder="e.g. 9" oninput="calcRenewalEnd()"/>
+            <span class="text-sm text-gray-400">months</span>
+          </div>
+          <input type="hidden" id="renewalTenure" value="3"/>
+        </div>
+        <div>
+          <label class="form-label">New End Date <span class="text-gray-600 font-normal">(auto-calculated)</span></label>
+          <input id="renewalEnd" type="date" class="form-input"/>
+        </div>
+        <div>
+          <label class="form-label">Updated Monthly Budget (PKR)</label>
+          <input id="renewalBudget" type="number" class="form-input" placeholder="Leave blank to keep current"/>
+        </div>
+      </div>
+      <div class="flex gap-3 px-6 py-4 border-t border-gray-800">
+        <button onclick="closeRenewalModal()" class="btn-secondary flex-1">Cancel</button>
+        <button onclick="saveRenewal()" class="btn-primary flex-1"><i class="fa-solid fa-rotate mr-2 text-xs"></i>Confirm Renewal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLIENT DETAIL MODAL -->
+  <div id="clientDetailModal" class="modal-overlay" onclick="if(event.target===this)closeClientDetail()">
+    <div class="modal-box" style="max-width:640px">
+      <div class="flex items-center justify-between px-6 py-5 border-b border-gray-800">
+        <h2 class="text-base font-semibold text-white" id="detailClientName">Client Details</h2>
+        <button onclick="closeClientDetail()" class="text-gray-500 hover:text-gray-300 transition-colors">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <div class="p-6" id="clientDetailBody"></div>
+    </div>
+  </div>
+
+  <script src="assets/js/app.js"></script>
+  <script>
+    let _currentUser = null;
+
+    // Tenure is measured in SMC calendars (monthly posting cycles owed), not calendar days.
+    // A client's engagement ends when the last calendar is posted, whenever that happens —
+    // not on a fixed date. lastPostedNumber tracks how many calendars have been posted so far.
+    function getCalendarsRemaining(c) {
+      return Math.max((c.tenure || 0) - (c.lastPostedNumber || 0), 0);
+    }
+
+    function getClientStatus(c) {
+      const remaining = getCalendarsRemaining(c);
+      if (c.status === 'paused') return 'paused';
+      if (remaining <= 0) return 'expired';
+      if (remaining <= 2) return 'ending_soon';
+      return 'active';
+    }
+
+    function statusLabel(s) {
+      const map = {
+        active: '<span class="status-badge bg-green-500/15 text-green-400 border-green-500/30">Active</span>',
+        ending_soon: '<span class="status-badge bg-orange-500/15 text-orange-400 border-orange-500/30">Ending Soon</span>',
+        expired: '<span class="status-badge bg-red-500/15 text-red-400 border-red-500/30">Expired</span>',
+        paused: '<span class="status-badge bg-gray-500/15 text-gray-400 border-gray-500/30">Paused</span>',
+      };
+      return map[s] || s;
+    }
+
+    function renderStats() {
+      const clients = getVisibleClients(APP.clients, _currentUser);
+      const active = clients.filter(c => getClientStatus(c) === 'active').length;
+      const ending = clients.filter(c => getClientStatus(c) === 'ending_soon').length;
+      const total = clients.reduce((s, c) => s + (c.budget || 0), 0);
+      const tasks = APP.tasks.filter(t => t.status !== 'posted').length;
+      document.getElementById('clientStats').innerHTML = `
+        <div class="stat-card border-l-indigo-500"><p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Total Clients</p><p class="text-3xl font-bold text-white">${clients.length}</p></div>
+        <div class="stat-card border-l-green-500"><p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Active Clients</p><p class="text-3xl font-bold text-white">${active}</p></div>
+        <div class="stat-card border-l-orange-500"><p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Ending Soon (&le;2 Calendars Left)</p><p class="text-3xl font-bold text-white">${ending}</p></div>
+        <div class="stat-card border-l-yellow-500"><p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Total Monthly Budget</p><p class="text-2xl font-bold text-white">${getCurrency()} ${(total/1000).toFixed(0)}K</p></div>
+      `;
+    }
+
+    let _activeTab = 'all';
+
+    function buildClientTable(list, canEdit) {
+      if (!list.length) return `<div class="text-center py-12 text-gray-600">No clients found</div>`;
+      return `
+        <table class="data-table w-full">
+          <thead><tr>
+            <th>Client</th><th>Team Lead</th><th>Tenure</th>
+            <th>Start</th><th>Calendars Left</th>
+            <th>Budget</th><th>Status</th><th>Last SMC Posted</th>
+            ${canEdit ? '<th></th>' : ''}
+          </tr></thead>
+          <tbody>
+            ${list.map(c => {
+              const s = getClientStatus(c);
+              const remaining = getCalendarsRemaining(c);
+              const calLabel = remaining <= 0 ? `<span class="text-red-400 font-semibold">0 left</span>` :
+                                remaining <= 2 ? `<span class="text-orange-400 font-semibold">${remaining} left</span>` :
+                                `<span class="text-gray-300">${remaining} left</span>`;
+              return `<tr class="cursor-pointer" onclick="viewClient('${c.id}')">
+                <td><span class="font-medium text-white">${c.name}</span></td>
+                <td><span class="text-green-400">${c.pm||'—'}</span></td>
+                <td>${c.tenure} cal</td>
+                <td>${formatDate(c.startDate)}</td>
+                <td>${calLabel}</td>
+                <td class="font-medium">${getCurrency()} ${(c.budget||0).toLocaleString()}</td>
+                <td>${statusLabel(s)}</td>
+                <td>${c.lastPostedNumber ? `<span class="status-badge bg-emerald-500/15 text-emerald-400 border-emerald-500/30">SMC #${c.lastPostedNumber}</span><div class="text-xs text-gray-500 mt-0.5">${c.lastPostedMonth ? c.lastPostedMonth + (c.lastPostedDate ? ' · ' + formatDate(c.lastPostedDate) : '') : (c.lastPostedDate ? formatDate(c.lastPostedDate) : '')}</div>` : '<span class="text-gray-600">—</span>'}</td>
+                ${canEdit ? `<td onclick="event.stopPropagation()"><div class="flex gap-2">
+                  <button onclick="editClient('${c.id}')" class="text-gray-500 hover:text-indigo-400 transition-colors p-1"><i class="fa-solid fa-pen text-xs"></i></button>
+                  <button onclick="deleteClient('${c.id}')" class="text-gray-500 hover:text-red-400 transition-colors p-1"><i class="fa-solid fa-trash text-xs"></i></button>
+                </div></td>` : ''}
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    function renderMemberTabs() {
+      const search = document.getElementById('clientSearch').value.toLowerCase();
+      const statusF = document.getElementById('statusFilter').value;
+      const canEdit = _currentUser && (_currentUser.role === 'admin' || can('add_client', _currentUser));
+
+      const allClients = getVisibleClients(APP.clients, _currentUser);
+      // Tabs cover every team member linked to a client in any role — PM, Executive, or Designer.
+      const members = [...new Set(allClients.flatMap(c => [c.pm, c.executive, c.designer]).filter(Boolean))].sort();
+
+      const tabs = [{ id: 'all', label: 'All Clients', icon: 'fa-users' }, ...members.map(m => ({ id: m, label: m, icon: 'fa-user' }))];
+
+      const tabsEl = document.getElementById('memberTabs');
+      tabsEl.innerHTML = tabs.map(t => `
+        <button onclick="switchTab('${t.id}')" id="tab_${t.id.replace(/\s/g,'_')}"
+          class="tab-btn flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors
+            ${_activeTab === t.id ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5' : 'border-transparent text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'}">
+          <i class="fa-solid ${t.icon} text-xs"></i>
+          ${t.label}
+        </button>`).join('');
+
+      // Executive assignment takes priority over PM for tab membership — a client with an
+      // Executive assigned belongs to that Executive's tab, never the PM's tab. Only clients
+      // with no Executive assigned fall back to showing under their PM's tab.
+      const matchesMember = (c, m) => {
+        if (c.executive) return c.executive === m || c.designer === m;
+        return c.pm === m || c.designer === m;
+      };
+
+      let filtered = allClients.filter(c => {
+        const s = getClientStatus(c);
+        const matchSearch = !search || c.name.toLowerCase().includes(search) || (c.pm||'').toLowerCase().includes(search) || (c.executive||'').toLowerCase().includes(search) || (c.designer||'').toLowerCase().includes(search);
+        const matchStatus = !statusF || s === statusF;
+        const matchTab = _activeTab === 'all' || matchesMember(c, _activeTab);
+        return matchSearch && matchStatus && matchTab;
+      });
+
+      const content = document.getElementById('memberTabContent');
+
+      if (_activeTab !== 'all') {
+        const memberClients = allClients.filter(c => matchesMember(c, _activeTab));
+        const activeCnt = memberClients.filter(c => getClientStatus(c) === 'active').length;
+        const totalBudget = memberClients.reduce((s, c) => s + (c.budget||0), 0);
+        const initials = _activeTab.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2);
+        const colors = ['bg-indigo-600','bg-violet-600','bg-pink-600','bg-emerald-600','bg-orange-600','bg-cyan-600'];
+        const colorIdx = members.indexOf(_activeTab) % colors.length;
+        content.innerHTML = `
+          <div class="flex items-center gap-4 p-5 border-b border-gray-800 bg-gray-800/30">
+            <div class="w-12 h-12 rounded-xl ${colors[colorIdx]} flex items-center justify-center text-white font-bold text-lg">${initials}</div>
+            <div>
+              <p class="text-base font-semibold text-white">${_activeTab}</p>
+              <p class="text-xs text-gray-500 mt-0.5">${memberClients.length} clients &bull; ${activeCnt} active &bull; ${getCurrency()} ${(totalBudget/1000).toFixed(0)}K/mo total budget</p>
+            </div>
+          </div>
+          <div class="p-0">${buildClientTable(filtered, canEdit)}</div>`;
+      } else {
+        content.innerHTML = `<div>${buildClientTable(filtered, canEdit)}</div>`;
+      }
+    }
+
+    function switchTab(tabId) {
+      _activeTab = tabId;
+      renderMemberTabs();
+    }
+
+    function renderClients() {
+      renderMemberTabs();
+      renderIntake();
+    }
+
+    function selectTenure(val) {
+      document.querySelectorAll('.tenure-pill').forEach(b => b.classList.remove('active'));
+      const btn = document.querySelector(`.tenure-pill[data-val="${val}"]`);
+      if (btn) btn.classList.add('active');
+      const wrap = document.getElementById('customTenureWrap');
+      if (val === 'custom') {
+        wrap.classList.remove('hidden');
+        document.getElementById('clientTenure').value = document.getElementById('customTenureInput').value || '';
+      } else {
+        wrap.classList.add('hidden');
+        document.getElementById('clientTenure').value = val;
+        autoCalcEnd();
+      }
+    }
+
+    function onCustomTenure() {
+      const v = parseInt(document.getElementById('customTenureInput').value);
+      if (v > 0) { document.getElementById('clientTenure').value = v; autoCalcEnd(); }
+    }
+
+    function autoCalcEnd() {
+      const start = document.getElementById('clientStart').value;
+      const tenure = parseInt(document.getElementById('clientTenure').value);
+      if (!start || !tenure) return;
+      const d = parseLocalDate(start);
+      d.setMonth(d.getMonth() + tenure);
+      document.getElementById('clientEnd').value = toLocalDateStr(d);
+    }
+
+    function onDesignerChange() {
+      const sel = document.getElementById('clientDesigner');
+      const custom = document.getElementById('clientDesignerCustom');
+      if (sel.value === '__custom__') custom.classList.remove('hidden');
+      else { custom.classList.add('hidden'); custom.value = ''; }
+    }
+
+    function populateRoleDropdown(selectId, roles, selectedValue) {
+      const sel = document.getElementById(selectId);
+      const firstOpt = sel.options[0];
+      sel.innerHTML = '';
+      sel.appendChild(firstOpt);
+      APP.team.filter(m => roles.includes(m.role)).forEach(m => {
+        const o = document.createElement('option');
+        o.value = m.name;
+        o.textContent = m.name;
+        if (m.name === selectedValue) o.selected = true;
+        sel.appendChild(o);
+      });
+    }
+
+    function openClientModal(client = null) {
+      document.getElementById('clientId').value = client ? client.id : '';
+      document.getElementById('clientModalTitle').textContent = client ? 'Edit Client' : 'Add New Client';
+      document.getElementById('clientName').value = client?.name || '';
+      document.getElementById('clientStart').value = client?.startDate || '';
+      document.getElementById('clientEnd').value = client?.endDate || '';
+      document.getElementById('clientBudget').value = client?.budget || '';
+      document.getElementById('clientTenure').value = client?.tenure || '3';
+      document.getElementById('clientNotes').value = client?.notes || '';
+      document.getElementById('clientStatus').value = client?.status || 'active';
+      document.querySelectorAll('.content-type-check').forEach(cb => {
+        cb.checked = client?.contentTypes?.includes(cb.value) || false;
+      });
+      populateRoleDropdown('clientPM',        ['admin','project_manager'], client?.pm || '');
+      populateRoleDropdown('clientExecutive',  ['creator'],                 client?.executive || '');
+      populateRoleDropdown('clientDesigner',   ['designer'],                client?.designer || (client ? '' : 'Faaiz'));
+      // Re-add custom option (overwritten by populateRoleDropdown's innerHTML reset)
+      document.getElementById('clientDesigner').insertAdjacentHTML('beforeend', '<option value="__custom__">+ Custom (type name)</option>');
+      const designerCustomInput = document.getElementById('clientDesignerCustom');
+      designerCustomInput.classList.add('hidden');
+      designerCustomInput.value = '';
+      if (client?.designer && ![...document.getElementById('clientDesigner').options].some(o => o.value === client.designer)) {
+        document.getElementById('clientDesigner').value = '__custom__';
+        designerCustomInput.classList.remove('hidden');
+        designerCustomInput.value = client.designer;
+      }
+      // Set tenure pills
+      const tenure = client?.tenure || 3;
+      const presets = [1, 2, 3, 6, 12];
+      document.getElementById('customTenureWrap').classList.add('hidden');
+      document.querySelectorAll('.tenure-pill').forEach(b => b.classList.remove('active'));
+      if (presets.includes(tenure)) {
+        selectTenure(tenure);
+      } else {
+        document.querySelector('.tenure-pill[data-val="custom"]').classList.add('active');
+        document.getElementById('customTenureWrap').classList.remove('hidden');
+        document.getElementById('customTenureInput').value = tenure;
+        document.getElementById('clientTenure').value = tenure;
+      }
+      // Restore Pipeline Setup fields
+      const phaseEl = document.getElementById('clientPhase');
+      const stageEl = document.getElementById('clientPipelineStage');
+      if (phaseEl) phaseEl.value = client?.phase || 'new';
+      if (stageEl) stageEl.value = client?.pipelineStage || 'new';
+      document.getElementById('clientModal').classList.add('open');
+    }
+
+    function closeClientModal() { document.getElementById('clientModal').classList.remove('open'); }
+
+    function saveClient() {
+      const id = document.getElementById('clientId').value;
+      const contentTypes = [...document.querySelectorAll('.content-type-check:checked')].map(cb => cb.value);
+      const data = {
+        id: id || 'c' + Date.now(),
+        name: document.getElementById('clientName').value.trim(),
+        pm: document.getElementById('clientPM').value,
+        executive: document.getElementById('clientExecutive').value,
+        designer: document.getElementById('clientDesigner').value === '__custom__'
+          ? document.getElementById('clientDesignerCustom').value.trim()
+          : document.getElementById('clientDesigner').value,
+        startDate: document.getElementById('clientStart').value,
+        endDate: document.getElementById('clientEnd').value,
+        budget: parseInt(document.getElementById('clientBudget').value) || 0,
+        tenure: parseInt(document.getElementById('clientTenure').value),
+        notes: document.getElementById('clientNotes').value.trim(),
+        status: document.getElementById('clientStatus').value,
+        phase: document.getElementById('clientPhase').value,
+        pipelineStage: document.getElementById('clientPipelineStage').value,
+        currency: getCurrency(),
+        contentTypes,
+      };
+      if (!data.name) { showToast('Please enter a client name.', 'error'); return; }
+      const allClients = APP.clients;
+      if (id) {
+        const idx = allClients.findIndex(c => c.id === id);
+        if (idx !== -1) {
+          // Preserve who originally entered this client
+          data.createdBy = allClients[idx].createdBy || '';
+          data.createdDate = allClients[idx].createdDate || '';
+          allClients[idx] = data;
+        } else {
+          data.createdBy = _currentUser.name;
+          data.createdDate = new Date().toISOString().split('T')[0];
+          allClients.push(data);
+        }
+      } else {
+        data.createdBy = _currentUser.name;
+        data.createdDate = new Date().toISOString().split('T')[0];
+        allClients.push(data);
+      }
+      APP.clients = allClients;
+
+      // If this is a new client (or activated from intake), create a pipeline task
+      // placed at the selected Pipeline Entry Point stage.
+      if (!id && data.pipelineStage) {
+        const allTasks = APP.tasks;
+        const newTask = {
+          id: 't' + Date.now(),
+          clientId: data.id,
+          clientName: data.name,
+          title: `${data.name} - Initial Content`,
+          status: data.pipelineStage,
+          priority: 'medium',
+          assignedTo: data.executive || '',
+          designer: data.designer || '',
+          dueDate: '',
+          postedDate: data.pipelineStage === 'posted' ? new Date().toISOString().split('T')[0] : '',
+          scheduledTill: '',
+          changesRequested: data.pipelineStage === 'changes_requested',
+          changeNote: '',
+          comments: [],
+          createdAt: new Date().toISOString(),
+        };
+        allTasks.push(newTask);
+        APP.tasks = allTasks;
+        apiSaveTask(newTask);
+      }
+
+      saveData(); apiSaveClient(data); renderClients(); renderStats(); closeClientModal();
+      // Remove from intake queue if this client was activated from there
+      if (window._activatingIntakeId) {
+        const q = getIntakeQueue().filter(c => c.id !== window._activatingIntakeId);
+        setIntakeQueue(q);
+        window._activatingIntakeId = null;
+        renderIntake();
+      }
+    }
+
+    function editClient(id) {
+      const c = APP.clients.find(c => c.id === id);
+      if (c) openClientModal(c);
+    }
+
+    function deleteClient(id) {
+      const c = APP.clients.find(c => c.id === id);
+      if (!c) return;
+      const taskCount = APP.tasks.filter(t => t.clientId === id).length;
+      const msg = taskCount
+        ? `Delete "${c.name}"? This will also remove ${taskCount} associated task(s). This cannot be undone.`
+        : `Delete "${c.name}"? This cannot be undone.`;
+      if (!confirm(msg)) return;
+      APP.clients = APP.clients.filter(c => c.id !== id);
+      APP.tasks   = APP.tasks.filter(t => t.clientId !== id);
+      apiDeleteClient(id); saveData(); renderClients(); renderStats();
+    }
+
+    function viewClient(id) {
+      const c = APP.clients.find(c => c.id === id);
+      if (!c) return;
+      const tasks = APP.tasks.filter(t => t.clientId === id);
+      const completed = tasks.filter(t => t.status === 'posted').length;
+      const remaining = getCalendarsRemaining(c);
+      document.getElementById('detailClientName').textContent = c.name;
+      document.getElementById('clientDetailBody').innerHTML = `
+        <div class="grid grid-cols-2 gap-4 mb-5">
+          <div class="bg-gray-800 rounded-xl p-4 space-y-2">
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Contract Info</p>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Team Lead</span><span class="text-sm text-green-400 font-medium">${c.pm || '—'}</span></div>
+            ${c.executive ? `<div class="flex justify-between"><span class="text-xs text-gray-500">Executive</span><span class="text-sm text-blue-400 font-medium">${c.executive}</span></div>` : ''}
+            ${c.designer ? `<div class="flex justify-between"><span class="text-xs text-gray-500">Designer</span><span class="text-sm text-pink-400 font-medium">${c.designer}</span></div>` : ''}
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Tenure</span><span class="text-sm text-white">${c.tenure} calendars</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Start</span><span class="text-sm text-white">${formatDate(c.startDate)}</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Calendars Posted</span><span class="text-sm text-white">${c.lastPostedNumber || 0} / ${c.tenure}</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Calendars Remaining</span><span class="text-sm font-bold ${remaining <= 2 ? 'text-orange-400' : 'text-green-400'}">${remaining}</span></div>
+          </div>
+          <div class="bg-gray-800 rounded-xl p-4 space-y-2">
+            <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Budget & Tasks</p>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Monthly Budget</span><span class="text-sm text-white font-medium">${getCurrency()} ${(c.budget||0).toLocaleString()}</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Total Tasks</span><span class="text-sm text-white">${tasks.length}</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Completed</span><span class="text-sm text-green-400">${completed}</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">In Progress</span><span class="text-sm text-yellow-400">${tasks.length - completed}</span></div>
+          </div>
+        </div>
+        ${c.notes ? `<div class="bg-gray-800 rounded-xl p-4 mb-4"><p class="text-xs text-gray-500 mb-1">Notes</p><p class="text-sm text-gray-300">${c.notes}</p></div>` : ''}
+        <div class="bg-gray-800 rounded-xl p-4 mb-4">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Content Types</p>
+          <div class="flex flex-wrap gap-2">${(c.contentTypes||[]).map(t => `<span class="status-badge bg-indigo-500/15 text-indigo-400 border-indigo-500/30">${t}</span>`).join('')}</div>
+        </div>
+        ${(() => {
+          const changeTasks = tasks.filter(t => t.status === 'changes_requested');
+          if (!changeTasks.length) return '';
+          return `<div class="rounded-xl border border-red-500/30 bg-red-500/5 p-4 mb-4">
+            <div class="flex items-center gap-2 mb-3">
+              <i class="fa-solid fa-flag text-red-400 text-xs"></i>
+              <p class="text-xs text-red-400 uppercase tracking-wider font-semibold">Change Requests (${changeTasks.length})</p>
+            </div>
+            <div class="space-y-3">
+              ${changeTasks.map(t => {
+                const changeComments = (t.comments||[]).filter(cm => cm.type === 'change_request' || !cm.type);
+                return `<div class="bg-gray-900 rounded-lg p-3 border border-gray-700">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-white">${t.contentType} — ${t.topic}</span>
+                    <span class="text-xs text-gray-500">${t.platform||''}</span>
+                  </div>
+                  ${changeComments.length ? changeComments.map(cm => `
+                    <div class="flex gap-2 mt-1.5">
+                      <div class="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fa-solid fa-comment text-red-400" style="font-size:8px"></i>
+                      </div>
+                      <div>
+                        <p class="text-xs text-gray-300">${cm.text}</p>
+                        <p class="text-xs text-gray-600 mt-0.5">${cm.by} &bull; ${cm.date}</p>
+                      </div>
+                    </div>`).join('') : '<p class="text-xs text-gray-600 italic">No comment added</p>'}
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        })()}
+        ${tasks.length ? `
+        <div class="bg-gray-800 rounded-xl p-4">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-semibold mb-3">Recent Tasks</p>
+          <div class="space-y-2">${tasks.slice(0,3).map(t => `
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-white">${t.contentType} — ${t.topic}</span>
+              ${statusBadge(t.status)}
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
+        <div class="flex gap-3 mt-5">
+          <button onclick="closeClientDetail();editClient('${c.id}')" class="btn-secondary flex-1 text-center text-sm">
+            <i class="fa-solid fa-pen mr-2"></i>Edit Client
+          </button>
+          <button onclick="openRenewalModal('${c.id}')" class="flex-1 text-center text-sm bg-green-600 hover:bg-green-500 text-white font-semibold px-4 py-2 rounded-lg transition-colors">
+            <i class="fa-solid fa-rotate mr-2"></i>Renew Contract
+          </button>
+        </div>
+      `;
+      document.getElementById('clientDetailModal').classList.add('open');
+    }
+
+    function closeClientDetail() { document.getElementById('clientDetailModal').classList.remove('open'); }
+
+    function openRenewalModal(id) {
+      const c = APP.clients.find(c => c.id === id);
+      if (!c) return;
+      closeClientDetail();
+      document.getElementById('renewalClientId').value = id;
+      document.getElementById('renewalClientName').textContent = c.name;
+      document.getElementById('renewalBudget').value = '';
+      document.getElementById('renewalCustomWrap').classList.add('hidden');
+      document.getElementById('renewalEnd').value = '';
+      // Default start = day after current end
+      const nextStart = c.endDate ? (() => { const d = parseLocalDate(c.endDate); d.setDate(d.getDate()+1); return toLocalDateStr(d); })() : toLocalDateStr(new Date());
+      document.getElementById('renewalStart').value = nextStart;
+      // Restore previous tenure as default
+      const presets = [1,2,3,6,12];
+      document.querySelectorAll('.tenure-pill[data-rv]').forEach(b => b.classList.remove('active'));
+      const prev = c.tenure || 3;
+      if (presets.includes(prev)) {
+        setRenewalTenure(prev);
+      } else {
+        setRenewalTenure('custom');
+        document.getElementById('renewalCustomInput').value = prev;
+        document.getElementById('renewalTenure').value = prev;
+        calcRenewalEnd();
+      }
+      document.getElementById('renewalModal').classList.add('open');
+    }
+
+    function closeRenewalModal() { document.getElementById('renewalModal').classList.remove('open'); }
+
+    function setRenewalTenure(val) {
+      document.querySelectorAll('.tenure-pill[data-rv]').forEach(b => b.classList.remove('active'));
+      const btn = document.querySelector(`.tenure-pill[data-rv="${val}"]`);
+      if (btn) btn.classList.add('active');
+      if (val === 'custom') {
+        document.getElementById('renewalCustomWrap').classList.remove('hidden');
+      } else {
+        document.getElementById('renewalCustomWrap').classList.add('hidden');
+        document.getElementById('renewalTenure').value = val;
+        calcRenewalEnd();
+      }
+    }
+
+    function calcRenewalEnd() {
+      const start   = document.getElementById('renewalStart').value;
+      const custom  = document.getElementById('renewalCustomInput')?.value;
+      const tenure  = parseInt(custom || document.getElementById('renewalTenure').value);
+      if (!start || !tenure) return;
+      document.getElementById('renewalTenure').value = tenure;
+      const d = parseLocalDate(start);
+      d.setMonth(d.getMonth() + tenure);
+      document.getElementById('renewalEnd').value = toLocalDateStr(d);
+    }
+
+    function saveRenewal() {
+      const id      = document.getElementById('renewalClientId').value;
+      const start   = document.getElementById('renewalStart').value;
+      const end     = document.getElementById('renewalEnd').value;
+      const tenure  = parseInt(document.getElementById('renewalTenure').value);
+      const budget  = document.getElementById('renewalBudget').value;
+      if (!start || !end || !tenure) { showToast('Please set a start date and tenure.', 'error'); return; }
+      const idx = APP.clients.findIndex(c => c.id === id);
+      if (idx === -1) return;
+      APP.clients[idx].startDate = start;
+      APP.clients[idx].endDate   = end;
+      APP.clients[idx].tenure    = tenure;
+      APP.clients[idx].status    = 'active';
+      if (budget) APP.clients[idx].budget = parseInt(budget);
+      saveData(); apiSaveClient(APP.clients[idx]); renderClients(); renderStats();
+      closeRenewalModal();
+      showToast(`Contract renewed until ${formatDate(end)}`);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      _currentUser = pageInit();
+      if (!_currentUser) return;
+      // Show/hide action buttons based on granted permissions
+      if (can('add_client', _currentUser)) {
+        document.getElementById('addClientBtn').innerHTML = `
+          <button onclick="openClientModal()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            <i class="fa-solid fa-plus text-xs"></i> Add Client
+          </button>`;
+      }
+      if (can('bulk_assign_pm', _currentUser)) {
+        document.getElementById('bulkAssignBtn').innerHTML = `
+          <button onclick="openBulkAssignModal()" class="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
+            <i class="fa-solid fa-users-gear text-xs"></i> Bulk Assign PM
+          </button>`;
+      }
+      if (can('export_sheets', _currentUser)) {
+        document.getElementById('exportSheetsBtn').innerHTML = `
+          <button onclick="exportToSheets()" class="flex items-center gap-2 bg-green-600 hover:bg-green-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
+            <i class="fa-solid fa-cloud-arrow-up text-xs"></i> Export to Master
+          </button>`;
+      }
+      if (can('pull_intake', _currentUser)) {
+        document.getElementById('pullIntakeBtn').innerHTML = `
+          <button onclick="pullFromSheets(this)" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap">
+            <i class="fa-solid fa-cloud-arrow-down text-xs"></i> Pull from Intake
+          </button>`;
+      }
+      if (can('activate_all_intake', _currentUser)) {
+        document.getElementById('activateAllBtn').innerHTML = `
+          <button onclick="activateAllIntake()" class="flex items-center gap-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
+            <i class="fa-solid fa-check-double text-xs"></i> Activate All
+          </button>`;
+      }
+      renderStats();
+      renderClients();
+      renderIntake();
+      if (APP.useAPI) syncFromAPI().then(() => { renderStats(); renderClients(); renderIntake(); });
+      document.addEventListener('smm:synced', () => { renderStats(); renderClients(); renderIntake(); });
+    });
+
+    const SHEETS_URL = localStorage.getItem('smm_sheets_url') || 'https://script.google.com/macros/s/AKfycbzdDEkv-fgVvsQ6WXhH1MRkIlubZzp17YCVdNBAQ_3Gr6JVYCOuPEq9t82LxS9No3ry/exec';
+
+    async function exportToSheets() {
+      const btn = event.currentTarget;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2 text-xs"></i>Exporting…';
+      try {
+        const clients = APP.clients;
+        const rows = clients.map(c => ({
+          Name:      c.name       || '',
+          Platform:  c.platform   || '',
+          Status:    c.status     || '',
+          Package:   c.package    || '',
+          Budget:    c.budget     || 0,
+          StartDate: c.startDate  || '',
+          EndDate:   c.endDate    || '',
+          Tenure:    c.tenure     || '',
+          Executive: c.executive  || '',
+          Designer:  c.designer   || '',
+          Lead:      c.pm         || '',
+          Brief:     c.brief      || ''
+        }));
+        // Use text/plain so no-cors doesn't strip the body
+        await fetch(SHEETS_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          body: JSON.stringify({ sheet: 'Clients', rows })
+        });
+        showToast('Clients exported to Google Sheets ✓');
+      } catch(err) {
+        showToast('Export failed — ' + err.message, 'error');
+      }
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-brands fa-google mr-2 text-xs"></i>Export to Sheets';
+    }
+
+    // ── INTAKE QUEUE ─────────────────────────────────────────
+    function getIntakeQueue() { return JSON.parse(localStorage.getItem('smm_intake') || '[]'); }
+    function setIntakeQueue(q) { localStorage.setItem('smm_intake', JSON.stringify(q)); }
+
+    let _intakeOpen = false;
+
+    function toggleIntake() {
+      _intakeOpen = !_intakeOpen;
+      const list = document.getElementById('intakeList');
+      const chevron = document.getElementById('intakeChevron');
+      if (_intakeOpen) {
+        list.classList.remove('hidden');
+        chevron.style.transform = 'rotate(180deg)';
+      } else {
+        list.classList.add('hidden');
+        chevron.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function renderIntake() {
+      const queue = getIntakeQueue();
+      const wrap  = document.getElementById('intakeStagingWrap');
+      const list  = document.getElementById('intakeList');
+      const count = document.getElementById('intakeCount');
+      if (!queue.length) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      count.textContent = queue.length + ' pending';
+      const search = (document.getElementById('clientSearch')?.value || '').toLowerCase();
+      const filtered = search ? queue.filter(c => c.name.toLowerCase().includes(search)) : queue;
+      if (!filtered.length) {
+        list.innerHTML = `<div class="text-center py-6 text-gray-600 text-sm">No pending clients match "${search}"</div>`;
+        return;
+      }
+      list.innerHTML = filtered.map(c => `
+        <div class="flex items-center justify-between px-5 py-3 hover:bg-gray-800/40 transition-colors" id="intake_${c.id}">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center text-yellow-400 font-bold text-sm">
+              ${c.name[0].toUpperCase()}
+            </div>
+            <div>
+              <p class="text-sm font-semibold text-white">${c.name}</p>
+              <p class="text-xs text-gray-500">Pulled from intake sheet — needs details</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="activateIntakeClient('${c.id}')"
+              class="flex items-center gap-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
+              <i class="fa-solid fa-circle-check text-xs"></i> Activate & Fill Details
+            </button>
+            <button onclick="dismissIntakeClient('${c.id}')"
+              class="text-gray-600 hover:text-red-400 transition-colors px-2 py-1.5" title="Dismiss">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>`).join('');
+    }
+
+    function activateIntakeClient(id) {
+      const queue = getIntakeQueue();
+      const client = queue.find(c => c.id === id);
+      if (!client) return;
+      // Open client modal pre-filled with name
+      openClientModal();
+      setTimeout(() => {
+        const nameField = document.getElementById('clientName');
+        if (nameField) nameField.value = client.name;
+      }, 50);
+      // Remove from intake queue after modal opens
+      window._activatingIntakeId = id;
+    }
+
+    function openBulkAssignModal() {
+      const sel = document.getElementById('bulkAssignPM');
+      sel.innerHTML = '<option value="">Select PM…</option>';
+      APP.team.filter(m => ['admin','project_manager'].includes(m.role)).forEach(m => {
+        const o = document.createElement('option');
+        o.value = m.name; o.textContent = m.name;
+        sel.appendChild(o);
+      });
+      const noPmCount = APP.clients.filter(c => !c.pm).length;
+      document.getElementById('bulkAssignCount').textContent =
+        noPmCount ? `${noPmCount} client(s) currently have no PM assigned.` : 'All clients already have a PM assigned.';
+      document.getElementById('bulkAssignModal').classList.add('open');
+    }
+    function closeBulkAssignModal() { document.getElementById('bulkAssignModal').classList.remove('open'); }
+
+    function applyBulkAssignPM() {
+      const pm = document.getElementById('bulkAssignPM').value;
+      if (!pm) { showToast('Select a PM first', 'error'); return; }
+      const all = APP.clients;
+      let count = 0;
+      all.forEach(c => { if (!c.pm) { c.pm = pm; count++; apiSaveClient(c); } });
+      APP.clients = all;
+      saveData();
+      closeBulkAssignModal();
+      renderClients(); renderStats();
+      showToast(count ? `Assigned ${pm} as PM to ${count} client(s).` : 'No clients needed a PM.');
+    }
+
+    function activateAllIntake() {
+      const queue = getIntakeQueue();
+      if (!queue.length) return;
+      if (!confirm(`Activate all ${queue.length} pending client(s) with default details? You can edit each one afterwards to fill in PM, budget, dates etc.`)) return;
+
+      const today = new Date().toISOString().split('T')[0];
+      const end = new Date(); end.setMonth(end.getMonth() + 1);
+      const endDate = end.toISOString().split('T')[0];
+
+      const all = APP.clients;
+      queue.forEach(c => {
+        const client = {
+          id: 'c' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+          name: c.name, pm: '', executive: '', designer: '',
+          startDate: today, endDate: endDate, budget: 0, tenure: 1,
+          notes: '', status: 'active', phase: 'onboarding', pipelineStage: 'new',
+          currency: getCurrency(), contentTypes: [],
+          createdBy: _currentUser.name, createdDate: today
+        };
+        all.push(client);
+        apiSaveClient(client);
+      });
+      APP.clients = all;
+      saveData();
+      setIntakeQueue([]);
+      renderIntake(); renderClients(); renderStats();
+      showToast(`Activated ${queue.length} client(s) — edit each to fill in details.`);
+    }
+
+    function dismissIntakeClient(id) {
+      const queue = getIntakeQueue().filter(c => c.id !== id);
+      setIntakeQueue(queue);
+      renderIntake();
+    }
+
+    function clearIntake() {
+      if (!confirm('Clear all pending intake clients?')) return;
+      setIntakeQueue([]);
+      renderIntake();
+    }
+
+    // Hook into closeClientModal to clean up intake if client was saved
+    const _origCloseClientModal = window.closeClientModal;
+
+    function pullFromSheets(btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2 text-xs"></i>Pulling…';
+
+      const cbName = '_sheetsCB_' + Date.now();
+      const timeout = setTimeout(() => {
+        cleanup();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-down mr-2 text-xs"></i>Pull from Intake';
+        showToast('Pull timed out — check your Apps Script is deployed correctly', 'error');
+      }, 15000);
+
+      function cleanup() {
+        clearTimeout(timeout);
+        delete window[cbName];
+        const s = document.getElementById('_sheetsScript');
+        if (s) s.remove();
+      }
+
+      window[cbName] = function(data) {
+        cleanup();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-down mr-2 text-xs"></i>Pull from Intake';
+
+        if (!data || !data.rows || !data.rows.length) {
+          showToast('No names found in intake sheet', 'error'); return;
+        }
+
+        // Only pull names — go to staging queue
+        const names = data.rows.map((r, i) => ({
+          id:   'intake_' + Date.now() + '_' + i,
+          name: (r.Name || r.name || Object.values(r)[0] || '').trim()
+        })).filter(c => c.name);
+
+        if (!names.length) { showToast('No valid names found in sheet', 'error'); return; }
+
+        // Skip names already in dashboard or already in queue (normalize to
+        // catch near-duplicates like "Robert A Leishear - SMM" vs "Robert Leishear")
+        const normalizeName = s => s.toLowerCase().replace(/\s*-\s*smm\s*$/i, '').replace(/[^a-z0-9]/g, '').trim();
+        const queue    = getIntakeQueue();
+        const existing = [...APP.clients.map(c => c.name), ...queue.map(c => c.name)].map(normalizeName);
+        const newOnes  = names.filter(n => !existing.includes(normalizeName(n.name)));
+
+        if (!newOnes.length) { showToast('All names already in dashboard or queue', 'info'); return; }
+
+        setIntakeQueue([...queue, ...newOnes]);
+        renderIntake();
+        showToast(`${newOnes.length} client${newOnes.length > 1 ? 's' : ''} added to Intake Queue ✓`);
+      };
+
+      const script = document.createElement('script');
+      script.id = '_sheetsScript';
+      script.src = SHEETS_URL + '?action=getIntakeClients&callback=' + cbName;
+      script.onerror = () => {
+        cleanup();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-down mr-2 text-xs"></i>Pull from Sheets';
+        showToast('Could not reach Google Sheets — redeploy your Apps Script', 'error');
+      };
+      document.head.appendChild(script);
+    }
+  </script>
+</body>
+</html>
