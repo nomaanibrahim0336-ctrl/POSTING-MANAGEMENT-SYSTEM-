@@ -97,6 +97,35 @@
           </div>
         </div>
 
+        <!-- Social Accounts (Facebook / Instagram) -->
+        <div id="socialSection" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <div class="px-6 py-4 border-b border-gray-800 flex items-center gap-3">
+            <div>
+              <h2 class="text-sm font-semibold text-white">Social Accounts</h2>
+              <p class="text-xs text-gray-500 mt-0.5">Connect Facebook Pages & linked Instagram Business accounts for posting</p>
+            </div>
+            <span id="metaStatusBadge" class="ml-auto text-xs px-2.5 py-1 rounded-full font-medium bg-gray-800 text-gray-400">Not connected</span>
+          </div>
+          <div class="p-6 space-y-4">
+            <div class="rounded-lg px-4 py-3 text-xs bg-yellow-500/10 border border-yellow-500/20 text-yellow-400">
+              <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
+              Publishing &amp; scheduling to Facebook/Instagram require a backend to run securely — that's coming later.
+              For now this connects your accounts and confirms access; it doesn't post anything yet.
+            </div>
+            <div>
+              <label class="form-label">Meta App ID</label>
+              <input id="metaAppIdInput" type="text" class="form-input" placeholder="Your Facebook Developer App ID"/>
+              <p class="text-xs text-gray-600 mt-1.5">From developers.facebook.com → your app → Settings → Basic</p>
+            </div>
+            <div class="flex gap-3">
+              <button onclick="saveMetaAppId()" class="btn-secondary px-5"><i class="fa-solid fa-floppy-disk mr-1.5"></i>Save App ID</button>
+              <button id="fbConnectBtn" onclick="connectFacebook()" class="btn-primary px-5"><i class="fa-brands fa-facebook mr-1.5"></i>Connect Facebook &amp; Instagram</button>
+              <button onclick="disconnectSocial()" class="btn-secondary px-5"><i class="fa-solid fa-link-slash mr-1.5"></i>Disconnect</button>
+            </div>
+            <div id="socialAccountsList" class="space-y-2"></div>
+          </div>
+        </div>
+
         <!-- Pipeline Stages -->
         <div id="pipelineSection" class="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <div class="px-6 py-4 border-b border-gray-800">
@@ -396,6 +425,119 @@
       document.getElementById('sheetsUrlInput').value = localStorage.getItem('smm_sheets_url') || '';
     }
 
+    // ===== Facebook / Instagram connection =====
+    // Client-side only for now: Facebook Login gives a user access token directly
+    // in the browser (no App Secret needed), which is enough to list Pages and
+    // linked Instagram Business accounts. Actually publishing/scheduling posts
+    // needs a backend to hold long-lived tokens and run on a timer — not built yet.
+    const FB_GRAPH_VERSION = 'v19.0';
+    const FB_SCOPES = 'pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish';
+
+    function loadMetaAppId() {
+      document.getElementById('metaAppIdInput').value = localStorage.getItem('smm_meta_app_id') || '';
+    }
+
+    function saveMetaAppId() {
+      const id = document.getElementById('metaAppIdInput').value.trim();
+      if (!id) { showToast('Enter a Meta App ID first'); return; }
+      localStorage.setItem('smm_meta_app_id', id);
+      showToast('Meta App ID saved');
+    }
+
+    function loadFacebookSDK(appId) {
+      return new Promise((resolve, reject) => {
+        if (window.FB) { window.FB.init({ appId, cookie: true, xfbml: false, version: FB_GRAPH_VERSION }); resolve(window.FB); return; }
+        window.fbAsyncInit = function () {
+          window.FB.init({ appId, cookie: true, xfbml: false, version: FB_GRAPH_VERSION });
+          resolve(window.FB);
+        };
+        const existing = document.getElementById('facebook-jssdk');
+        if (existing) return;
+        const js = document.createElement('script');
+        js.id = 'facebook-jssdk';
+        js.src = 'https://connect.facebook.net/en_US/sdk.js';
+        js.onerror = () => reject(new Error('Failed to load Facebook SDK'));
+        document.body.appendChild(js);
+      });
+    }
+
+    async function connectFacebook() {
+      const appId = (document.getElementById('metaAppIdInput').value || localStorage.getItem('smm_meta_app_id') || '').trim();
+      if (!appId) { showToast('Save your Meta App ID first'); return; }
+      const btn = document.getElementById('fbConnectBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Connecting…';
+      try {
+        const FB = await loadFacebookSDK(appId);
+        const authResponse = await new Promise((resolve, reject) => {
+          FB.login(res => {
+            if (res.authResponse) resolve(res.authResponse);
+            else reject(new Error('Facebook login was cancelled or denied'));
+          }, { scope: FB_SCOPES });
+        });
+        const pagesRes = await new Promise((resolve, reject) => {
+          FB.api('/me/accounts', { fields: 'name,access_token,instagram_business_account{id,username,profile_picture_url}' }, res => {
+            if (res && !res.error) resolve(res);
+            else reject(new Error((res && res.error && res.error.message) || 'Failed to fetch Pages'));
+          });
+        });
+        const accounts = (pagesRes.data || []).map(p => ({
+          pageId: p.id,
+          pageName: p.name,
+          pageAccessToken: p.access_token,
+          igId: p.instagram_business_account ? p.instagram_business_account.id : null,
+          igUsername: p.instagram_business_account ? p.instagram_business_account.username : null,
+        }));
+        localStorage.setItem('smm_social_accounts', JSON.stringify(accounts));
+        localStorage.setItem('smm_fb_user_token', authResponse.accessToken);
+        localStorage.setItem('smm_fb_connected_at', new Date().toISOString());
+        renderSocialAccounts();
+        showToast(accounts.length ? `Connected ${accounts.length} Page(s)` : 'Connected, but no Pages found on this account');
+      } catch (err) {
+        showToast(err.message || 'Facebook connection failed');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-brands fa-facebook mr-1.5"></i>Connect Facebook & Instagram';
+      }
+    }
+
+    function disconnectSocial() {
+      localStorage.removeItem('smm_social_accounts');
+      localStorage.removeItem('smm_fb_user_token');
+      localStorage.removeItem('smm_fb_connected_at');
+      if (window.FB) { try { window.FB.logout(); } catch (e) {} }
+      renderSocialAccounts();
+      showToast('Disconnected social accounts');
+    }
+
+    function getConnectedSocialAccounts() {
+      return JSON.parse(localStorage.getItem('smm_social_accounts') || '[]');
+    }
+
+    function renderSocialAccounts() {
+      const accounts = getConnectedSocialAccounts();
+      const badge = document.getElementById('metaStatusBadge');
+      if (accounts.length) {
+        badge.textContent = `${accounts.length} account(s) connected`;
+        badge.className = 'ml-auto text-xs px-2.5 py-1 rounded-full font-medium bg-green-500/10 text-green-400';
+      } else {
+        badge.textContent = 'Not connected';
+        badge.className = 'ml-auto text-xs px-2.5 py-1 rounded-full font-medium bg-gray-800 text-gray-400';
+      }
+      document.getElementById('socialAccountsList').innerHTML = accounts.map(a => `
+        <div class="flex items-center justify-between p-3 bg-gray-800 rounded-lg border border-gray-700">
+          <div class="flex items-center gap-3">
+            <i class="fa-brands fa-facebook text-blue-500"></i>
+            <div>
+              <p class="text-sm font-medium text-white">${a.pageName}</p>
+              ${a.igUsername
+                ? `<p class="text-xs text-gray-500"><i class="fa-brands fa-instagram mr-1"></i>@${a.igUsername}</p>`
+                : `<p class="text-xs text-yellow-500">No Instagram Business account linked to this Page</p>`}
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
     function exportData() {
       const data = { clients: APP.clients, tasks: APP.tasks, team: APP.team, exportedAt: new Date().toISOString() };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -472,7 +614,7 @@
     }
 
     // IDs of sections only admins/PMs should see
-    const ADMIN_ONLY_SECTIONS = ['wsSection','backendSection','pipelineSection','dataSection','sysSection'];
+    const ADMIN_ONLY_SECTIONS = ['wsSection','backendSection','socialSection','pipelineSection','dataSection','sysSection'];
 
     document.addEventListener('DOMContentLoaded', () => {
       const user = pageInit();
@@ -483,6 +625,8 @@
       updateAPIStatusBadgeLocal();
       loadSheetsUrl();
       updateSysInfo();
+      loadMetaAppId();
+      renderSocialAccounts();
       if (APP.useAPI) syncFromAPI().then(() => updateSysInfo());
       document.addEventListener('smm:synced', updateSysInfo);
       // Hide admin-only sections for non-admin roles
