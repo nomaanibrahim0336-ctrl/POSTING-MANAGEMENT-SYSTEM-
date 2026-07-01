@@ -1,0 +1,10 @@
+project_id = "smm-management-dashboard"
+
+[functions.meta-oauth]
+verify_jwt = false
+
+[functions.social-publish]
+verify_jwt = false
+
+[functions.social-scheduler]
+verify_jwt = false

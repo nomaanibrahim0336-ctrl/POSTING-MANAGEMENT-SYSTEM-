@@ -468,6 +468,7 @@
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Connecting…';
       try {
+        if (!APP.useAPI) throw new Error('Connect a Supabase backend first (see Backend Connection above)');
         const FB = await loadFacebookSDK(appId);
         const authResponse = await new Promise((resolve, reject) => {
           FB.login(res => {
@@ -475,24 +476,19 @@
             else reject(new Error('Facebook login was cancelled or denied'));
           }, { scope: FB_SCOPES });
         });
-        const pagesRes = await new Promise((resolve, reject) => {
-          FB.api('/me/accounts', { fields: 'name,access_token,instagram_business_account{id,username,profile_picture_url}' }, res => {
-            if (res && !res.error) resolve(res);
-            else reject(new Error((res && res.error && res.error.message) || 'Failed to fetch Pages'));
-          });
+        // The short-lived token + App Secret never mix in the browser — the
+        // meta-oauth Edge Function does the long-lived exchange and stores
+        // Page/Instagram access tokens server-side.
+        const res = await fetch(SUPABASE_URL + '/functions/v1/meta-oauth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+          body: JSON.stringify({ userAccessToken: authResponse.accessToken, connectedBy: (APP.currentUser && APP.currentUser.email) || '' })
         });
-        const accounts = (pagesRes.data || []).map(p => ({
-          pageId: p.id,
-          pageName: p.name,
-          pageAccessToken: p.access_token,
-          igId: p.instagram_business_account ? p.instagram_business_account.id : null,
-          igUsername: p.instagram_business_account ? p.instagram_business_account.username : null,
-        }));
-        localStorage.setItem('smm_social_accounts', JSON.stringify(accounts));
-        localStorage.setItem('smm_fb_user_token', authResponse.accessToken);
-        localStorage.setItem('smm_fb_connected_at', new Date().toISOString());
+        const body = await res.json();
+        if (!res.ok || body.error) throw new Error(body.error || 'meta-oauth function failed');
+        localStorage.setItem('smm_social_accounts', JSON.stringify(body.accounts || []));
         renderSocialAccounts();
-        showToast(accounts.length ? `Connected ${accounts.length} Page(s)` : 'Connected, but no Pages found on this account');
+        showToast(body.accounts && body.accounts.length ? `Connected ${body.accounts.length} Page(s)` : 'Connected, but no Pages found on this account');
       } catch (err) {
         showToast(err.message || 'Facebook connection failed');
       } finally {
@@ -502,16 +498,29 @@
     }
 
     function disconnectSocial() {
+      // Clears the local view only — access tokens live server-side (protected by
+      // RLS) and aren't reachable with the anon key. To fully revoke a Page,
+      // delete its row from smm_social_accounts in the Supabase dashboard.
       localStorage.removeItem('smm_social_accounts');
-      localStorage.removeItem('smm_fb_user_token');
-      localStorage.removeItem('smm_fb_connected_at');
       if (window.FB) { try { window.FB.logout(); } catch (e) {} }
       renderSocialAccounts();
-      showToast('Disconnected social accounts');
+      showToast('Disconnected locally — revoke access in Meta settings or delete the row in Supabase to fully remove it');
     }
 
     function getConnectedSocialAccounts() {
       return JSON.parse(localStorage.getItem('smm_social_accounts') || '[]');
+    }
+
+    // Refreshes the connected-accounts cache from Supabase (tokens excluded — that
+    // view only exposes page_id/page_name/ig_id/ig_username).
+    async function fetchSocialAccounts() {
+      if (!APP.useAPI) return;
+      try {
+        const accounts = await supaFetch('/smm_social_accounts_public?select=*');
+        localStorage.setItem('smm_social_accounts', JSON.stringify(accounts || []));
+      } catch (err) {
+        console.warn('Failed to load connected social accounts:', err.message);
+      }
     }
 
     function renderSocialAccounts() {
@@ -529,9 +538,9 @@
           <div class="flex items-center gap-3">
             <i class="fa-brands fa-facebook text-blue-500"></i>
             <div>
-              <p class="text-sm font-medium text-white">${a.pageName}</p>
-              ${a.igUsername
-                ? `<p class="text-xs text-gray-500"><i class="fa-brands fa-instagram mr-1"></i>@${a.igUsername}</p>`
+              <p class="text-sm font-medium text-white">${a.page_name}</p>
+              ${a.ig_username
+                ? `<p class="text-xs text-gray-500"><i class="fa-brands fa-instagram mr-1"></i>@${a.ig_username}</p>`
                 : `<p class="text-xs text-yellow-500">No Instagram Business account linked to this Page</p>`}
             </div>
           </div>
@@ -627,6 +636,7 @@
       updateSysInfo();
       loadMetaAppId();
       renderSocialAccounts();
+      fetchSocialAccounts().then(renderSocialAccounts);
       if (APP.useAPI) syncFromAPI().then(() => updateSysInfo());
       document.addEventListener('smm:synced', updateSysInfo);
       // Hide admin-only sections for non-admin roles
